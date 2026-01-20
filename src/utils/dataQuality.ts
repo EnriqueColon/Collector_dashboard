@@ -299,8 +299,8 @@ export function validateRow(
   if ((!lender || lender === '') && (!plaintiff || plaintiff === '')) {
     errors.push('Missing or empty lender/plaintiff');
   }
-  const lenderValue = lender ?? plaintiff;
-  if (typeof lenderValue === 'object' && lenderValue instanceof Date) {
+  const lenderValue: unknown = lender ?? plaintiff;
+  if (lenderValue instanceof Date) {
     errors.push('Invalid lender/plaintiff value: date');
   } else if (
     lenderValue !== undefined &&
