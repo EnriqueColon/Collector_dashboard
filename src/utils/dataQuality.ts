@@ -300,7 +300,7 @@ export function validateRow(
     errors.push('Missing or empty lender/plaintiff');
   }
   const lenderValue = lender ?? plaintiff;
-  if (lenderValue instanceof Date) {
+  if (typeof lenderValue === 'object' && lenderValue instanceof Date) {
     errors.push('Invalid lender/plaintiff value: date');
   } else if (
     lenderValue !== undefined &&
