@@ -27,6 +27,7 @@ function App() {
   const { complaints, loading, error, issues, summary, refresh } = useSheetData(SHEET_NAME);
   const [showQualityPanel, setShowQualityPanel] = useState(false);
   const [currentView, setCurrentView] = useState<'dashboard' | 'summary'>('dashboard');
+  const isSummary = currentView === 'summary';
 
   if (loading && complaints.length === 0) {
     return (
@@ -83,19 +84,19 @@ function App() {
   }
 
   // If summary view, show summary page
-  if (currentView === 'summary') {
+  if (isSummary) {
     return (
       <>
         <div className="view-switcher">
           <button
             onClick={() => setCurrentView('summary')}
-            className={currentView === 'summary' ? 'active' : ''}
+            className={isSummary ? 'active' : ''}
           >
             Summary
           </button>
           <button
             onClick={() => setCurrentView('dashboard')}
-            className={currentView === 'dashboard' ? 'active' : ''}
+            className={!isSummary ? 'active' : ''}
           >
             Detail
           </button>
@@ -117,13 +118,13 @@ function App() {
           <div className="view-switcher">
             <button
               onClick={() => setCurrentView('summary')}
-              className={currentView === 'summary' ? 'active' : ''}
+              className={isSummary ? 'active' : ''}
             >
               Summary
             </button>
             <button
               onClick={() => setCurrentView('dashboard')}
-              className={currentView === 'dashboard' ? 'active' : ''}
+              className={!isSummary ? 'active' : ''}
             >
               Detail
             </button>
