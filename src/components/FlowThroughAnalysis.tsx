@@ -118,8 +118,8 @@ function FlowThroughTable({
                   <td className="text-right">{formatDate(row.complaintDate)}</td>
                   <td className="text-center">
                     {row.emailSent
-                      ? <span className={`email-sent-badge ${row.emailSent.toLowerCase().includes('yes') || row.emailSent === 'TRUE' ? 'email-sent-yes' : 'email-sent-no'}`}>
-                          {row.emailSent.toLowerCase().includes('yes') || row.emailSent === 'TRUE' ? 'Yes' : row.emailSent}
+                      ? <span className={`email-sent-badge ${row.emailSent.toLowerCase().includes('success') || row.emailSent.toLowerCase().includes('yes') || row.emailSent === 'TRUE' ? 'email-sent-yes' : 'email-sent-no'}`}>
+                          {row.emailSent}
                         </span>
                       : <span className="email-sent-badge email-sent-no">No</span>
                     }
