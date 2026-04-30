@@ -3,30 +3,38 @@ import { google } from 'googleapis';
 const GOOGLE_SHEET_ID = '1cx-5MHBBWy1a7XGJTOhkQyAj5eMA_v0Qbkr-7xBJPXw';
 
 function parseCredentials() {
-  const rawKey =
-    process.env.GOOGLE_SERVICE_ACCOUNT_KEY ||
-    process.env.VITE_GOOGLE_SERVICE_ACCOUNT_KEY;
+  // Prefer base64-encoded key (most reliable in Vercel)
+  const base64Key = process.env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64;
+  const rawKey = process.env.GOOGLE_SERVICE_ACCOUNT_KEY || process.env.VITE_GOOGLE_SERVICE_ACCOUNT_KEY;
 
-  if (!rawKey) return null;
+  let jsonString;
+
+  if (base64Key) {
+    try {
+      jsonString = Buffer.from(base64Key.trim(), 'base64').toString('utf8');
+    } catch (err) {
+      console.error('Failed to decode base64 key:', err.message);
+      return null;
+    }
+  } else if (rawKey) {
+    jsonString = rawKey.trim();
+    const first = jsonString[0];
+    const last = jsonString[jsonString.length - 1];
+    if ((first === "'" && last === "'") || (first === '"' && last === '"')) {
+      jsonString = jsonString.slice(1, -1);
+    }
+  } else {
+    return null;
+  }
 
   try {
-    let keyToParse = rawKey.trim();
-    const first = keyToParse[0];
-    const last = keyToParse[keyToParse.length - 1];
-    if ((first === "'" && last === "'") || (first === '"' && last === '"')) {
-      keyToParse = keyToParse.slice(1, -1);
-    }
-
-    const credentials = JSON.parse(keyToParse);
-
-    // Ensure private key newlines are actual newlines, not escaped \n
+    const credentials = JSON.parse(jsonString);
     if (credentials.private_key) {
       credentials.private_key = credentials.private_key.replace(/\\n/g, '\n');
     }
-
     return credentials;
   } catch (err) {
-    console.error('Failed to parse credentials:', err.message);
+    console.error('Failed to parse credentials JSON:', err.message);
     return null;
   }
 }
@@ -37,7 +45,7 @@ export default async function handler(req, res) {
   const credentials = parseCredentials();
   if (!credentials) {
     return res.status(500).json({
-      error: 'Service account not configured. Set GOOGLE_SERVICE_ACCOUNT_KEY in Vercel environment variables.',
+      error: 'Service account not configured. Set GOOGLE_SERVICE_ACCOUNT_KEY_BASE64 in Vercel environment variables.',
     });
   }
 
