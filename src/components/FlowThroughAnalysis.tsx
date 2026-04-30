@@ -125,8 +125,12 @@ function FlowThroughTable({
                     }
                   </td>
                   <td className="sent-to-cell">
-                    {row.plaintiffAttorneyName && <div className="attorney-name">{row.plaintiffAttorneyName}</div>}
-                    {row.plaintiffAttorneyEmail && <div className="attorney-email">{row.plaintiffAttorneyEmail}</div>}
+                    {row.plaintiffAttorneyName && row.plaintiffAttorneyName.split(';').map((name, i) => (
+                      <div key={i} className="attorney-name">{name.trim()}</div>
+                    ))}
+                    {row.plaintiffAttorneyEmail && row.plaintiffAttorneyEmail.split(';').map((email, i) => (
+                      <div key={i} className="attorney-email">{email.trim()}</div>
+                    ))}
                     {!row.plaintiffAttorneyName && !row.plaintiffAttorneyEmail && <span className="text-muted">—</span>}
                   </td>
                 </tr>
