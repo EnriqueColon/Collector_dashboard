@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { FlowThroughDeal } from '../types';
 import { formatCurrency, formatDate } from '../utils/calculations';
+import { PropertyDetailModal } from './PropertyDetailModal';
 
 interface FlowThroughAnalysisProps {
   ytdData: FlowThroughDeal[];
@@ -15,7 +16,17 @@ function upbClass(upb: number) {
   return '';
 }
 
-function FlowThroughTable({ title, data, exportFileName }: { title: string; data: FlowThroughDeal[]; exportFileName: string }) {
+function FlowThroughTable({
+  title,
+  data,
+  exportFileName,
+  onAddressClick,
+}: {
+  title: string;
+  data: FlowThroughDeal[];
+  exportFileName: string;
+  onAddressClick: (deal: FlowThroughDeal) => void;
+}) {
   const [sortField, setSortField] = useState<SortField>('complaintDate');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
@@ -81,7 +92,9 @@ function FlowThroughTable({ title, data, exportFileName }: { title: string; data
           <table className="data-table">
             <thead>
               <tr>
-                <th onClick={() => handleSort('propertyAddress')} className="sortable">Property Address <SortIcon field="propertyAddress" /></th>
+                <th onClick={() => handleSort('propertyAddress')} className="sortable">
+                  Property Address <SortIcon field="propertyAddress" />
+                </th>
                 <th onClick={() => handleSort('county')} className="sortable">County <SortIcon field="county" /></th>
                 <th onClick={() => handleSort('lender')} className="sortable">Lender <SortIcon field="lender" /></th>
                 <th onClick={() => handleSort('upb')} className="sortable text-right">UPB <SortIcon field="upb" /></th>
@@ -91,7 +104,11 @@ function FlowThroughTable({ title, data, exportFileName }: { title: string; data
             <tbody>
               {sorted.map((row, idx) => (
                 <tr key={idx}>
-                  <td>{row.propertyAddress}</td>
+                  <td>
+                    <button className="address-link" onClick={() => onAddressClick(row)}>
+                      {row.propertyAddress}
+                    </button>
+                  </td>
                   <td>{row.county}</td>
                   <td>{row.lender}</td>
                   <td className={`text-right currency-cell ${upbClass(row.upb)}`}>{formatCurrency(row.upb)}</td>
@@ -107,13 +124,34 @@ function FlowThroughTable({ title, data, exportFileName }: { title: string; data
 }
 
 export function FlowThroughAnalysis({ ytdData, lastWeekData }: FlowThroughAnalysisProps) {
+  const [selectedDeal, setSelectedDeal] = useState<FlowThroughDeal | null>(null);
+
   return (
-    <div className="dashboard-card">
-      <div className="card-header"><h2>Deals Meeting Criteria</h2></div>
-      <div className="flow-through-container">
-        <FlowThroughTable title="Year-to-Date: All Deals Meeting Criteria" data={ytdData} exportFileName="flow-through-ytd" />
-        <FlowThroughTable title="Last 7 Days: Deals Meeting Criteria" data={lastWeekData} exportFileName="flow-through-last-week" />
+    <>
+      <div className="dashboard-card">
+        <div className="card-header"><h2>Deals Meeting Criteria</h2></div>
+        <div className="flow-through-container">
+          <FlowThroughTable
+            title="Year-to-Date: All Deals Meeting Criteria"
+            data={ytdData}
+            exportFileName="flow-through-ytd"
+            onAddressClick={setSelectedDeal}
+          />
+          <FlowThroughTable
+            title="Last 7 Days: Deals Meeting Criteria"
+            data={lastWeekData}
+            exportFileName="flow-through-last-week"
+            onAddressClick={setSelectedDeal}
+          />
+        </div>
       </div>
-    </div>
+
+      {selectedDeal && (
+        <PropertyDetailModal
+          deal={selectedDeal}
+          onClose={() => setSelectedDeal(null)}
+        />
+      )}
+    </>
   );
 }
