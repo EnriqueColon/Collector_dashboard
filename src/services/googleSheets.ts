@@ -7,8 +7,8 @@ import { GOOGLE_SHEET_ID } from '../config/sheetConfig';
 
 const GOOGLE_SHEETS_API_BASE = 'https://sheets.googleapis.com/v4/spreadsheets';
 
-// Use proxy in development, or direct URL if VITE_API_URL is set
-const API_BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : 'http://localhost:3001');
+// Use same-origin by default (works with Vite proxy in dev and Render in prod)
+const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
 /**
  * Fetches data from Google Sheets

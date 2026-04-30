@@ -121,15 +121,14 @@ npm run test:coverage
 
 ## Production Deployment
 
-For detailed deployment instructions, see [DEPLOYMENT.md](./DEPLOYMENT.md).
+Deployed on **Vercel**. For full instructions see [DEPLOYMENT.md](./DEPLOYMENT.md).
 
-**Quick Start:**
+**Quick deploy:**
 ```bash
-# Build and start production server
-npm run build:start
-
-# Then open http://localhost:3001 in your browser
+vercel --prod
 ```
+
+Set `GOOGLE_SERVICE_ACCOUNT_KEY` and `CRON_SECRET` in Vercel environment variables before deploying.
 
 See [TESTING.md](./TESTING.md) for detailed testing information.
 
@@ -137,7 +136,7 @@ See [TESTING.md](./TESTING.md) for detailed testing information.
 
 ```
 src/
-  components/          # React components for tables and UI
+  components/         # React components for tables and UI
   hooks/              # Custom React hooks
   services/           # External service integrations
   types.ts            # TypeScript type definitions

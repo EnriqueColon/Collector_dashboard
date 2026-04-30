@@ -1,206 +1,135 @@
-# Deployment Guide
+# Deployment Guide — Vercel
 
-This guide explains how to package and deploy the Collector Dashboard for team members to use without running development servers.
+This guide covers deploying the Collector Dashboard to Vercel.
 
-## Quick Start (Production Mode)
+## Architecture on Vercel
 
-### Option 1: Build and Start (Recommended)
+- **Frontend**: React/Vite app built to `dist/` and served as a static site via Vercel's CDN
+- **Backend API**: `api/sheet-data.js` runs as a Vercel Serverless Function
+- **Weekly Sync**: `api/cron/sync.js` runs every Monday at 9 AM UTC via Vercel Cron (Pro plan required)
 
-```bash
-# Build the frontend and start the production server
-npm run build:start
-```
+Every time the dashboard loads, it fetches live data from Google Sheets, so data is always current regardless of the cron schedule.
 
-This will:
-1. Build the React frontend for production
-2. Start the server on port 3001 (or PORT from environment)
-3. Serve the dashboard at `http://localhost:3001`
+---
 
-### Option 2: Separate Steps
+## First-Time Deployment
+
+### 1. Install Vercel CLI
 
 ```bash
-# Step 1: Build the frontend
-npm run build
-
-# Step 2: Start the production server
-npm start
+npm install -g vercel
 ```
 
-## Production Server
+### 2. Link the project
 
-The production server:
-- Serves the built React app from the `dist/` folder
-- Provides API endpoints for Google Sheets data
-- Handles all routing (including React Router)
-- Runs on port 3001 by default (configurable via `PORT` environment variable)
+```bash
+vercel link
+```
 
-## Environment Setup
+Follow the prompts to connect to your Vercel account and project.
 
-### Required Files
+### 3. Set Environment Variables
 
-1. **`.env.server`** (or `.env`) - Contains Google Service Account credentials
-   ```
-   VITE_GOOGLE_SERVICE_ACCOUNT_KEY='{"type":"service_account",...}'
-   ```
+In the Vercel dashboard → **Project Settings → Environment Variables**, add:
 
-2. **`.env`** - Optional frontend environment variables
-   ```
-   VITE_API_URL=http://localhost:3001
-   ```
+| Variable | Value |
+|---|---|
+| `GOOGLE_SERVICE_ACCOUNT_KEY` | The full service account JSON (single line) |
+| `CRON_SECRET` | A random secret string (protects the cron endpoint) |
 
-### Setting Up Service Account
+To get the service account JSON on one line, run:
+```bash
+cat .env.server | grep VITE_GOOGLE_SERVICE_ACCOUNT_KEY | cut -d= -f2-
+```
 
-1. Create a Google Service Account (see `GOOGLE_SHEETS_AUTH.md`)
-2. Share your Google Sheet with the service account email
-3. Add the service account JSON key to `.env.server`:
-   ```bash
-   VITE_GOOGLE_SERVICE_ACCOUNT_KEY='{"type":"service_account","project_id":"...","private_key_id":"...","private_key":"...","client_email":"...","client_id":"...","auth_uri":"...","token_uri":"...","auth_provider_x509_cert_url":"...","client_x509_cert_url":"..."}'
-   ```
+> **Important**: Use `GOOGLE_SERVICE_ACCOUNT_KEY` (without the `VITE_` prefix) in Vercel — it is a server-side secret and should never be exposed to the browser.
 
-**Note**: The key must be on a single line with escaped quotes.
+### 4. Deploy
 
-## Sharing with Team Members
+```bash
+vercel --prod
+```
 
-### Method 1: Local Installation
+---
 
-1. **Share the project folder** (via Git, zip file, or shared drive)
-2. **Team members install dependencies**:
-   ```bash
-   npm install
-   ```
-3. **Team members set up environment**:
-   - Copy `.env.server` (or create their own with service account key)
-   - Or make the Google Sheet public (view-only) to skip authentication
-4. **Team members start the server**:
-   ```bash
-   npm run build:start
-   ```
-5. **Open browser** to `http://localhost:3001`
+## Subsequent Deployments
 
-### Method 2: Pre-built Package
+Push to the `main` branch on GitHub. If you have connected the Vercel project to the GitHub repo, Vercel will automatically redeploy on every push.
 
-1. **Build the project**:
-   ```bash
-   npm run build
-   ```
-2. **Share the entire project folder** (including `dist/`, `node_modules/`, `server.js`, etc.)
-3. **Team members just run**:
-   ```bash
-   npm start
-   ```
-   (No build step needed)
+Or deploy manually:
+```bash
+vercel --prod
+```
 
-### Method 3: Network Access
+---
 
-To allow other team members on your network to access:
+## Weekly Data Sync (Cron)
 
-1. **Start the server**:
-   ```bash
-   npm run build:start
-   ```
-2. **Find your local IP address**:
-   - Mac/Linux: `ifconfig | grep "inet "`
-   - Windows: `ipconfig`
-3. **Share the URL**: `http://YOUR_IP_ADDRESS:3001`
-4. **Update CORS** in `server.js` if needed (already configured to allow all in production)
+`vercel.json` schedules `api/cron/sync` to run every Monday at 9 AM UTC:
 
-## Production Checklist
+```json
+"crons": [{ "path": "/api/cron/sync", "schedule": "0 9 * * 1" }]
+```
 
-- [ ] Build completed successfully (`npm run build`)
-- [ ] `.env.server` file exists with service account key
-- [ ] Google Sheet is shared with service account email
-- [ ] Server starts without errors
-- [ ] Dashboard loads at `http://localhost:3001`
-- [ ] Data loads correctly from Google Sheets
-- [ ] All features work (Summary, Detail views, exports)
+This verifies the Google Sheets connection is healthy and logs the row count.
+
+> **Note**: Vercel Cron Jobs require the **Pro plan**. On the free Hobby plan, the cron will not run — but the dashboard will still fetch live data on every page load.
+
+You can trigger the cron manually to test it:
+```bash
+curl -H "Authorization: Bearer YOUR_CRON_SECRET" https://your-app.vercel.app/api/cron/sync
+```
+
+---
+
+## Local Development
+
+The Express server (`server.js`) is still used for local development:
+
+```bash
+# Run both frontend and backend locally
+npm run dev:full
+```
+
+This starts:
+- Vite dev server on `http://localhost:5173`
+- Express backend on `http://localhost:3001`
+
+Vite proxies `/api` requests to the Express server automatically.
+
+---
+
+## Vercel Deployment Checklist
+
+- [ ] `GOOGLE_SERVICE_ACCOUNT_KEY` set in Vercel environment variables
+- [ ] `CRON_SECRET` set in Vercel environment variables
+- [ ] Google Sheet shared with service account email (`collector-dashboard@collector-dashboard-484215.iam.gserviceaccount.com`)
+- [ ] Deployed successfully (`vercel --prod`)
+- [ ] Dashboard loads and data appears
+- [ ] `/api/cron/sync` responds correctly when triggered manually
+
+---
 
 ## Troubleshooting
 
-### "dist/ folder not found"
-- Run `npm run build` first
+### Data not loading
+- Check Vercel Function Logs in the dashboard
+- Verify `GOOGLE_SERVICE_ACCOUNT_KEY` is set and valid
+- Confirm the Google Sheet is shared with the service account email
 
-### "Service account not initialized"
-- Check `.env.server` file exists
-- Verify service account key is correctly formatted (single line, escaped quotes)
-- Ensure Google Sheet is shared with service account email
+### Cron not running
+- Cron Jobs require Vercel Pro plan
+- Verify `CRON_SECRET` is set
+- Check Vercel → Project → Cron Jobs tab for run history
 
-### "Cannot connect to backend"
-- Verify server is running on port 3001
-- Check firewall settings
-- Try `http://localhost:3001/api/health` to test backend
+### Build fails
+- Run `npm run build` locally first to catch TypeScript/build errors
+- Check Vercel build logs for details
 
-### Port already in use
-- Change port: `PORT=3002 npm start`
-- Or kill existing process: `lsof -ti:3001 | xargs kill -9`
-
-## Advanced: Running as a Service
-
-### Using PM2 (Recommended)
-
-```bash
-# Install PM2 globally
-npm install -g pm2
-
-# Start the application
-pm2 start npm --name "collector-dashboard" -- run start
-
-# Save PM2 configuration
-pm2 save
-
-# Setup PM2 to start on system boot
-pm2 startup
-```
-
-### Using systemd (Linux)
-
-Create `/etc/systemd/system/collector-dashboard.service`:
-
-```ini
-[Unit]
-Description=Collector Dashboard
-After=network.target
-
-[Service]
-Type=simple
-User=your-user
-WorkingDirectory=/path/to/Collector_Dashboard
-Environment="NODE_ENV=production"
-Environment="PORT=3001"
-ExecStart=/usr/bin/node server.js
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Then:
-```bash
-sudo systemctl enable collector-dashboard
-sudo systemctl start collector-dashboard
-```
+---
 
 ## Security Notes
 
-- **Never commit** `.env.server` or `.env` files to version control
-- Keep service account keys secure
-- Use HTTPS in production (consider using a reverse proxy like nginx)
-- Restrict network access if needed (firewall rules)
-
-## Updating the Dashboard
-
-When updates are available:
-
-1. **Pull latest changes** (if using Git):
-   ```bash
-   git pull
-   ```
-
-2. **Rebuild**:
-   ```bash
-   npm run build:start
-   ```
-
-3. **Or if using PM2**:
-   ```bash
-   pm2 restart collector-dashboard
-   ```
+- **Never commit** `.env`, `.env.server`, or any file containing the service account key
+- `GOOGLE_SERVICE_ACCOUNT_KEY` on Vercel is a server-side secret — it is never sent to the browser
+- The `CRON_SECRET` prevents unauthorized external triggers of the cron endpoint

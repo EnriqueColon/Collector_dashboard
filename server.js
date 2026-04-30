@@ -93,14 +93,36 @@ const GOOGLE_SHEET_ID = '1cx-5MHBBWy1a7XGJTOhkQyAj5eMA_v0Qbkr-7xBJPXw';
 // Initialize service account
 let authClient = null;
 
+function getServiceAccountKeyFromEnv() {
+  const rawKey = process.env.VITE_GOOGLE_SERVICE_ACCOUNT_KEY ||
+                 process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
+
+  if (rawKey) {
+    return rawKey;
+  }
+
+  const base64Key = process.env.VITE_GOOGLE_SERVICE_ACCOUNT_KEY_BASE64 ||
+                    process.env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64;
+
+  if (base64Key) {
+    try {
+      return Buffer.from(base64Key, 'base64').toString('utf8');
+    } catch (error) {
+      console.error('ERROR: Failed to decode base64 service account key:', error.message);
+    }
+  }
+
+  return null;
+}
+
 function initializeAuth() {
-  // Try both with and without VITE_ prefix
-  let serviceAccountKey = process.env.VITE_GOOGLE_SERVICE_ACCOUNT_KEY || 
-                          process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
+  // Try both raw JSON and base64-encoded JSON
+  let serviceAccountKey = getServiceAccountKeyFromEnv();
   
   if (!serviceAccountKey) {
     console.error('ERROR: Service account key not found in .env file');
     console.error('Looking for: VITE_GOOGLE_SERVICE_ACCOUNT_KEY or GOOGLE_SERVICE_ACCOUNT_KEY');
+    console.error('Or base64: VITE_GOOGLE_SERVICE_ACCOUNT_KEY_BASE64 or GOOGLE_SERVICE_ACCOUNT_KEY_BASE64');
     console.error('Available env vars:', Object.keys(process.env).filter(k => k.includes('GOOGLE')));
     return null;
   }
@@ -184,56 +206,33 @@ app.get('/api/sheet-data', async (req, res) => {
 
   // Fallback to CSV export (works for public sheets)
   try {
-    const csvUrl = `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
-    
-    return new Promise((resolve, reject) => {
-      const protocol = csvUrl.startsWith('https') ? https : http;
-      
-      protocol.get(csvUrl, (response) => {
-        if (response.statusCode !== 200) {
-          reject(new Error(`Failed to fetch CSV: ${response.statusCode}`));
-          return;
-        }
-        
-        let csvData = '';
-        response.on('data', (chunk) => {
-          csvData += chunk;
-        });
-        
-        response.on('end', () => {
-          try {
-            // Parse CSV
-            const lines = csvData.split('\n').filter(line => line.trim());
-            if (lines.length === 0) {
-              return resolve(res.json({ data: [] }));
-            }
-            
-            // Parse header
-            const headers = parseCSVLine(lines[0]);
-            
-            // Parse rows
-            const data = [];
-            for (let i = 1; i < lines.length; i++) {
-              const values = parseCSVLine(lines[i]);
-              const rowObj = {};
-              headers.forEach((header, index) => {
-                rowObj[header] = values[index] || '';
-              });
-              data.push(rowObj);
-            }
-            
-            resolve(res.json({ data }));
-          } catch (parseError) {
-            reject(parseError);
-          }
-        });
-      }).on('error', (error) => {
-        reject(error);
+    const csvData = await fetchCsvExport(sheetName);
+
+    // Parse CSV
+    const lines = csvData.split('\n').filter(line => line.trim());
+    if (lines.length === 0) {
+      return res.json({ data: [] });
+    }
+
+    // Parse header
+    const headers = parseCSVLine(lines[0]);
+
+    // Parse rows
+    const data = [];
+    for (let i = 1; i < lines.length; i++) {
+      const values = parseCSVLine(lines[i]);
+      const rowObj = {};
+      headers.forEach((header, index) => {
+        rowObj[header] = values[index] || '';
       });
-    });
+      data.push(rowObj);
+    }
+
+    return res.json({ data });
   } catch (error) {
     console.error('Error fetching sheet data via CSV:', error);
-    res.status(500).json({ 
+    const statusCode = error && error.statusCode ? error.statusCode : 500;
+    return res.status(statusCode).json({ 
       error: error.message || 'Failed to fetch sheet data',
       message: 'Both API and CSV export failed. Make sure the sheet is public or service account is configured.'
     });
@@ -266,6 +265,41 @@ function parseCSVLine(line) {
   
   result.push(current);
   return result;
+}
+
+async function fetchCsvExport(sheetName) {
+  const csvUrl = `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
+
+  return new Promise((resolve, reject) => {
+    const protocol = csvUrl.startsWith('https') ? https : http;
+    const request = protocol.get(csvUrl, (response) => {
+      if (response.statusCode !== 200) {
+        const error = new Error(`Failed to fetch CSV: ${response.statusCode}`);
+        error.statusCode = response.statusCode;
+        response.resume();
+        reject(error);
+        return;
+      }
+
+      let csvData = '';
+      response.setEncoding('utf8');
+      response.on('data', (chunk) => {
+        csvData += chunk;
+      });
+
+      response.on('end', () => {
+        resolve(csvData);
+      });
+    });
+
+    request.on('error', (error) => {
+      reject(error);
+    });
+
+    request.setTimeout(10000, () => {
+      request.destroy(new Error('CSV request timed out'));
+    });
+  });
 }
 
 // Health check
