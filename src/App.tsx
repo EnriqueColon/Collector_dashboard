@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useSheetData } from './hooks/useSheetData';
+import { Login } from './components/Login';
 import {
   calculateFourWeekRollUpWeekly,
   calculateMonthlyLenderData,
@@ -24,6 +25,16 @@ import './App.css';
 import { SHEET_NAME } from './config/sheetConfig';
 
 function App() {
+  const [authenticated, setAuthenticated] = useState(() => localStorage.getItem('dashboard_auth') === '1');
+
+  if (!authenticated) {
+    return <Login onLogin={() => setAuthenticated(true)} />;
+  }
+
+  return <Dashboard onLogout={() => { localStorage.removeItem('dashboard_auth'); setAuthenticated(false); }} />;
+}
+
+function Dashboard({ onLogout }: { onLogout: () => void }) {
   const { complaints, loading, error, issues, summary, refresh } = useSheetData(SHEET_NAME);
   const [showQualityPanel, setShowQualityPanel] = useState(false);
   const [currentView, setCurrentView] = useState<'dashboard' | 'summary'>('dashboard');
@@ -140,6 +151,9 @@ function App() {
               Data Quality ({issues.length})
             </button>
           )}
+          <button onClick={onLogout} className="refresh-button" style={{ backgroundColor: 'var(--text-secondary)', borderColor: 'var(--text-secondary)' }}>
+            Log Out
+          </button>
         </div>
       </header>
 
