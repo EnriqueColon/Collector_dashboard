@@ -110,6 +110,14 @@ export interface FlowThroughDeal {
   plaintiffAttorneyName?: string;
   plaintiffAttorneyEmail?: string;
   emailSent?: string;
+  valuationMedianSqFt?: string;
+  valuationMeanSqFt?: string;
+  valuationMedianLot?: string;
+  valuationMeanLot?: string;
+  ltvMedianSqFt?: number | string;
+  ltvMeanSqFt?: number | string;
+  ltvMedianLot?: number | string;
+  ltvMeanLot?: number | string;
 }
 
 export interface RegionSummary {

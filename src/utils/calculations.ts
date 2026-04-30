@@ -569,6 +569,14 @@ export function getFlowThroughYTD(
         plaintiffAttorneyName: c.plaintiffAttorneyName as string | undefined,
         plaintiffAttorneyEmail: c.plaintiffAttorneyEmail as string | undefined,
         emailSent: c.emailSent as string | undefined,
+        valuationMedianSqFt: c.valuationMedianSqFt as string | undefined,
+        valuationMeanSqFt: c.valuationMeanSqFt as string | undefined,
+        valuationMedianLot: c.valuationMedianLot as string | undefined,
+        valuationMeanLot: c.valuationMeanLot as string | undefined,
+        ltvMedianSqFt: c.ltvMedianSqFt as number | string | undefined,
+        ltvMeanSqFt: c.ltvMeanSqFt as number | string | undefined,
+        ltvMedianLot: c.ltvMedianLot as number | string | undefined,
+        ltvMeanLot: c.ltvMeanLot as number | string | undefined,
       };
     })
     .sort((a, b) => b.complaintDate.getTime() - a.complaintDate.getTime());
@@ -609,6 +617,14 @@ export function getFlowThroughLastWeek(
         plaintiffAttorneyName: c.plaintiffAttorneyName as string | undefined,
         plaintiffAttorneyEmail: c.plaintiffAttorneyEmail as string | undefined,
         emailSent: c.emailSent as string | undefined,
+        valuationMedianSqFt: c.valuationMedianSqFt as string | undefined,
+        valuationMeanSqFt: c.valuationMeanSqFt as string | undefined,
+        valuationMedianLot: c.valuationMedianLot as string | undefined,
+        valuationMeanLot: c.valuationMeanLot as string | undefined,
+        ltvMedianSqFt: c.ltvMedianSqFt as number | string | undefined,
+        ltvMeanSqFt: c.ltvMeanSqFt as number | string | undefined,
+        ltvMedianLot: c.ltvMedianLot as number | string | undefined,
+        ltvMeanLot: c.ltvMeanLot as number | string | undefined,
       };
     })
     .sort((a, b) => b.complaintDate.getTime() - a.complaintDate.getTime());

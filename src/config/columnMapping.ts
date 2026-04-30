@@ -13,6 +13,16 @@ export const COLUMN_MAPPING: Record<string, string> = {
   'Plaintiff Attorney Email': 'plaintiffAttorneyEmail',
   'Plaintiff Attoreny Email Sent?': 'emailSent',
   'Processing Log': 'complaintDate',
+
+  // Valuation columns
+  '[Automatic calculation] Subject address valuation based on median price per square foot': 'valuationMedianSqFt',
+  '[Automatic calculation] Subject address valuation based on mean price per square foot':   'valuationMeanSqFt',
+  '[Automatic calculation] Subject address valuation based on median price per lot size square foot': 'valuationMedianLot',
+  '[Automatic calculation] Subject address valuation based on mean price per lot size square foot':   'valuationMeanLot',
+  '[Median Sq Ft. Val.] Loan to Value':  'ltvMedianSqFt',
+  '[Mean Sq Ft. Val.] Loan to Value':    'ltvMeanSqFt',
+  '[Median Lot Size Val.] Loan to Value': 'ltvMedianLot',
+  '[Mean Lot Size Val.] Loan to Value':   'ltvMeanLot',
   
   // Additional mappings for flexibility
   'Document Title': 'documentTitle',
