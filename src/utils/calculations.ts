@@ -566,6 +566,9 @@ export function getFlowThroughYTD(
         upb: c.upb || 0,
         complaintDate: date,
         meetsCriteria: true,
+        plaintiffAttorneyName: c.plaintiffAttorneyName as string | undefined,
+        plaintiffAttorneyEmail: c.plaintiffAttorneyEmail as string | undefined,
+        emailSent: c.emailSent as string | undefined,
       };
     })
     .sort((a, b) => b.complaintDate.getTime() - a.complaintDate.getTime());
@@ -603,6 +606,9 @@ export function getFlowThroughLastWeek(
         upb: c.upb || 0,
         complaintDate: date,
         meetsCriteria: true,
+        plaintiffAttorneyName: c.plaintiffAttorneyName as string | undefined,
+        plaintiffAttorneyEmail: c.plaintiffAttorneyEmail as string | undefined,
+        emailSent: c.emailSent as string | undefined,
       };
     })
     .sort((a, b) => b.complaintDate.getTime() - a.complaintDate.getTime());

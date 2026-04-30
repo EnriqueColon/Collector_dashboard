@@ -1360,6 +1360,38 @@ a:focus-visible {
   text-decoration-color: var(--primary-color);
 }
 
+/* ── Email Sent Badge & Sent To Cell ───────────────────────── */
+.email-sent-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.email-sent-yes {
+  background: #d1fae5;
+  color: #065f46;
+}
+.email-sent-no {
+  background: #fee2e2;
+  color: #991b1b;
+}
+.sent-to-cell {
+  white-space: nowrap;
+}
+.attorney-name {
+  font-weight: 500;
+  font-size: 0.875rem;
+}
+.attorney-email {
+  font-size: 0.75rem;
+  color: var(--text-secondary, #6b7280);
+}
+.text-muted {
+  color: var(--text-secondary, #9ca3af);
+}
+
 /* ── Property Detail Modal ─────────────────────────────────── */
 .prop-modal-overlay {
   position: fixed;

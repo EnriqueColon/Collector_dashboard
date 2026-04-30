@@ -9,6 +9,9 @@ export const COLUMN_MAPPING: Record<string, string> = {
   'Sum of Unpaid Balance(s)': 'upb',
   'Unpaid Balance(s)': 'upb', // Fallback if Sum column is empty
   'Meets Criteria?': 'meetsCriteria',
+  'Plaintiff Attorney Name': 'plaintiffAttorneyName',
+  'Plaintiff Attorney Email': 'plaintiffAttorneyEmail',
+  'Plaintiff Attoreny Email Sent?': 'emailSent',
   'Processing Log': 'complaintDate',
   
   // Additional mappings for flexibility

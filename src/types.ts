@@ -107,6 +107,9 @@ export interface FlowThroughDeal {
   upb: number;
   complaintDate: Date;
   meetsCriteria: boolean;
+  plaintiffAttorneyName?: string;
+  plaintiffAttorneyEmail?: string;
+  emailSent?: string;
 }
 
 export interface RegionSummary {
