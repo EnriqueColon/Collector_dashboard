@@ -32,19 +32,12 @@ interface Comp {
   correlation?: number;
 }
 
-function ExternalLink({ href, label }: { href: string; label: string }) {
-  return (
-    <a href={href} target="_blank" rel="noopener noreferrer" className="prop-ext-link">
-      {label} ↗
-    </a>
-  );
-}
-
 export function PropertyDetailModal({ deal, onClose }: Props) {
   const [geo, setGeo] = useState<GeoResult | null>(null);
   const [propInfo, setPropInfo] = useState<PropertyInfo | null>(null);
   const [comps, setComps] = useState<Comp[]>([]);
-  const [compsLoading, setCompsLoading] = useState(true);
+  const [compsRequested, setCompsRequested] = useState(false);
+  const [compsLoading, setCompsLoading] = useState(false);
   const [compsError, setCompsError] = useState<string | null>(null);
 
   // Close on Escape key
@@ -62,8 +55,7 @@ export function PropertyDetailModal({ deal, onClose }: Props) {
       .catch(() => setGeo({ lat: null, lon: null }));
   }, [deal.propertyAddress]);
 
-  // Fetch Rentcast property details + comps
-  useEffect(() => {
+  const fetchComps = () => {
     setCompsLoading(true);
     setCompsError(null);
     fetch(`/api/comps?address=${encodeURIComponent(deal.propertyAddress)}`)
@@ -75,14 +67,11 @@ export function PropertyDetailModal({ deal, onClose }: Props) {
       })
       .catch(err => setCompsError(err.message))
       .finally(() => setCompsLoading(false));
-  }, [deal.propertyAddress]);
+  };
 
   const mapUrl = geo?.lat && geo?.lon
     ? `https://www.openstreetmap.org/export/embed.html?bbox=${geo.lon - 0.008},${geo.lat - 0.008},${geo.lon + 0.008},${geo.lat + 0.008}&layer=mapnik&marker=${geo.lat},${geo.lon}`
     : null;
-
-  const mapsSearch = encodeURIComponent(deal.propertyAddress + ', New York');
-  const zillowSearch = encodeURIComponent(deal.propertyAddress);
 
   return (
     <div className="prop-modal-overlay" onClick={onClose}>
@@ -157,16 +146,6 @@ export function PropertyDetailModal({ deal, onClose }: Props) {
               )}
             </div>
 
-            {/* External links */}
-            <div className="prop-ext-links">
-              <div className="prop-ext-label">View Property On</div>
-              <div className="prop-ext-row">
-                <ExternalLink href={`https://www.google.com/maps/search/?api=1&query=${mapsSearch}`} label="Google Maps" />
-                <ExternalLink href={`https://www.zillow.com/homes/${zillowSearch}_rb/`} label="Zillow" />
-                <ExternalLink href={`https://www.redfin.com/query/${zillowSearch}`} label="Redfin" />
-                <ExternalLink href={`https://www.propertyshark.com/Real-Estate-Reports/ny/?search=${zillowSearch}`} label="PropertyShark" />
-              </div>
-            </div>
           </div>
 
           {/* Right column — map */}
@@ -190,10 +169,22 @@ export function PropertyDetailModal({ deal, onClose }: Props) {
         <div className="prop-comps-section">
           <h3 className="prop-comps-title">
             Comparable Sales
-            <span className="prop-comps-source">via Rentcast · 1-mile radius</span>
+            <span className="prop-comps-source">via Rentcast · 5-mile radius</span>
           </h3>
 
-          {compsLoading && (
+          {!compsRequested && (
+            <div className="prop-comps-prompt">
+              <button
+                className="find-comps-btn"
+                onClick={() => { setCompsRequested(true); fetchComps(); }}
+              >
+                Find Comps
+              </button>
+              <span className="prop-comps-hint">Pulls recent sales within 5 miles from Rentcast</span>
+            </div>
+          )}
+
+          {compsRequested && compsLoading && (
             <div className="prop-comps-loading">
               {[...Array(3)].map((_, i) => (
                 <div key={i} className="skel" style={{ height: 40, marginBottom: 6, borderRadius: 4 }} />
@@ -201,7 +192,7 @@ export function PropertyDetailModal({ deal, onClose }: Props) {
             </div>
           )}
 
-          {!compsLoading && compsError && (
+          {compsRequested && !compsLoading && compsError && (
             <div className="prop-comps-error">
               {compsError.includes('RENTCAST_API_KEY')
                 ? 'Add RENTCAST_API_KEY to your Vercel environment variables to enable comps.'
@@ -209,11 +200,11 @@ export function PropertyDetailModal({ deal, onClose }: Props) {
             </div>
           )}
 
-          {!compsLoading && !compsError && comps.length === 0 && (
-            <div className="empty-state">No comparable sales found within 1 mile.</div>
+          {compsRequested && !compsLoading && !compsError && comps.length === 0 && (
+            <div className="empty-state">No comparable sales found within 5 miles.</div>
           )}
 
-          {!compsLoading && !compsError && comps.length > 0 && (
+          {compsRequested && !compsLoading && !compsError && comps.length > 0 && (
             <div className="table-container">
               <table className="data-table">
                 <thead>
