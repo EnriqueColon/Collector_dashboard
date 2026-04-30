@@ -1078,6 +1078,45 @@ a:focus-visible {
   color: var(--text-secondary);
 }
 
+.kpi-card-clickable {
+  cursor: pointer;
+  transition: box-shadow 0.15s, border-color 0.15s, transform 0.1s;
+}
+.kpi-card-clickable:hover {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  border-color: var(--primary-color);
+  transform: translateY(-1px);
+}
+.kpi-card-selected {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px var(--primary-color);
+}
+.kpi-click-hint {
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+  margin-top: 0.25rem;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.kpi-card-clickable:hover .kpi-click-hint {
+  opacity: 1;
+}
+
+.clickable-bar-group {
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+.clickable-bar-group:hover {
+  background: rgba(99, 102, 241, 0.06);
+}
+.bar-group-selected {
+  background: rgba(99, 102, 241, 0.1);
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 /* ── Skeleton Loader ───────────────────────────────────────── */
 @keyframes shimmer {
   0%   { background-position: 200% 0; }

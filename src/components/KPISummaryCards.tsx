@@ -1,6 +1,6 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { ProcessedComplaint } from '../types';
-import { formatCurrency, meetsCriteria } from '../utils/calculations';
+import { formatCurrency, formatDate, meetsCriteria } from '../utils/calculations';
 import { startOfMonth, startOfYear, subDays } from 'date-fns';
 
 interface KPISummaryCardsProps {
@@ -14,9 +14,19 @@ interface CardProps {
   trend?: number;
   trendLabel?: string;
   accent: 'blue' | 'green' | 'amber';
+  selected: boolean;
+  onClick: () => void;
 }
 
-function KPICard({ label, value, subLabel, trend, trendLabel, accent }: CardProps) {
+type DealSortField = 'property' | 'county' | 'lender' | 'upb' | 'date';
+
+function upbClass(upb: number) {
+  if (upb >= 750000) return 'upb-high';
+  if (upb >= 500000) return 'upb-mid';
+  return '';
+}
+
+function KPICard({ label, value, subLabel, trend, trendLabel, accent, selected, onClick }: CardProps) {
   const accentColor = accent === 'blue'
     ? 'var(--primary-color)'
     : accent === 'green'
@@ -24,7 +34,7 @@ function KPICard({ label, value, subLabel, trend, trendLabel, accent }: CardProp
     : 'var(--warning-color)';
 
   return (
-    <div className="kpi-card">
+    <div className={`kpi-card kpi-card-clickable${selected ? ' kpi-card-selected' : ''}`} onClick={onClick}>
       <div className="kpi-accent-bar" style={{ backgroundColor: accentColor }} />
       <div className="kpi-label">{label}</div>
       <div className="kpi-value">{value}</div>
@@ -35,12 +45,17 @@ function KPICard({ label, value, subLabel, trend, trendLabel, accent }: CardProp
           {trendLabel && <span className="kpi-trend-context"> {trendLabel}</span>}
         </div>
       )}
+      <div className="kpi-click-hint">Click to view details →</div>
     </div>
   );
 }
 
 export function KPISummaryCards({ complaints }: KPISummaryCardsProps) {
-  const metrics = useMemo(() => {
+  const [selectedCard, setSelectedCard] = useState<string | null>(null);
+  const [dealSortField, setDealSortField] = useState<DealSortField>('upb');
+  const [dealSortDir, setDealSortDir] = useState<'asc' | 'desc'>('desc');
+
+  const { metrics, cardDeals } = useMemo(() => {
     const now = new Date();
     const monthStart = startOfMonth(now);
     const yearStart = startOfYear(now);
@@ -60,54 +75,159 @@ export function KPISummaryCards({ complaints }: KPISummaryCardsProps) {
     const mtdUPB = mtdCriteria.reduce((s, c) => s + (typeof c.upb === 'number' && !isNaN(c.upb) ? c.upb : 0), 0);
 
     const ytdCriteria = valid.filter(c => inRange(c, yearStart) && meetsCriteria(c));
+    const thisWeekDeals = valid.filter(c => inRange(c, thisWeekStart) && meetsCriteria(c));
+    const lastWeekDeals = valid.filter(c => inRange(c, lastWeekStart, thisWeekStart) && meetsCriteria(c));
 
-    const thisWeek = valid.filter(c => inRange(c, thisWeekStart) && meetsCriteria(c)).length;
-    const lastWeek = valid.filter(c => inRange(c, lastWeekStart, thisWeekStart) && meetsCriteria(c)).length;
+    const wow = lastWeekDeals.length === 0
+      ? (thisWeekDeals.length > 0 ? 100 : 0)
+      : Math.round(((thisWeekDeals.length - lastWeekDeals.length) / lastWeekDeals.length) * 100);
 
-    const wow = lastWeek === 0
-      ? (thisWeek > 0 ? 100 : 0)
-      : Math.round(((thisWeek - lastWeek) / lastWeek) * 100);
-
-    return { mtdAll: mtdAll.length, mtdCriteria: mtdCriteria.length, mtdUPB, ytdCriteria: ytdCriteria.length, thisWeek, wow };
+    return {
+      metrics: { mtdAll: mtdAll.length, mtdCriteria: mtdCriteria.length, mtdUPB, ytdCriteria: ytdCriteria.length, thisWeek: thisWeekDeals.length, wow },
+      cardDeals: { mtdAll, mtdCriteria, ytdCriteria, thisWeek: thisWeekDeals },
+    };
   }, [complaints]);
+
+  const selectedDeals = useMemo(() => {
+    if (!selectedCard) return [];
+    const raw = cardDeals[selectedCard as keyof typeof cardDeals] ?? [];
+    const mapped = raw.map(c => ({
+      propertyAddress: c.propertyAddress || 'Unknown',
+      county: c.normalizedCounty || c.county || 'Unknown',
+      lender: c.normalizedLender || c.lender || c.plaintiff || 'Unknown',
+      upb: typeof c.upb === 'number' && !isNaN(c.upb) ? c.upb : 0,
+      complaintDate: c.complaintDate,
+    }));
+    return [...mapped].sort((a, b) => {
+      if (dealSortField === 'property') return dealSortDir === 'asc' ? a.propertyAddress.localeCompare(b.propertyAddress) : b.propertyAddress.localeCompare(a.propertyAddress);
+      if (dealSortField === 'county')   return dealSortDir === 'asc' ? a.county.localeCompare(b.county) : b.county.localeCompare(a.county);
+      if (dealSortField === 'lender')   return dealSortDir === 'asc' ? a.lender.localeCompare(b.lender) : b.lender.localeCompare(a.lender);
+      if (dealSortField === 'date') {
+        const aT = a.complaintDate ? new Date(a.complaintDate).getTime() : 0;
+        const bT = b.complaintDate ? new Date(b.complaintDate).getTime() : 0;
+        return dealSortDir === 'asc' ? aT - bT : bT - aT;
+      }
+      return dealSortDir === 'asc' ? a.upb - b.upb : b.upb - a.upb;
+    });
+  }, [selectedCard, cardDeals, dealSortField, dealSortDir]);
+
+  const handleDealSort = (field: DealSortField) => {
+    if (dealSortField === field) setDealSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setDealSortField(field); setDealSortDir(field === 'upb' || field === 'date' ? 'desc' : 'asc'); }
+  };
+
+  const SortIcon = ({ field }: { field: DealSortField }) => (
+    <span className="sort-icon">{dealSortField !== field ? '↕' : dealSortDir === 'asc' ? '↑' : '↓'}</span>
+  );
+
+  const totalUPB = useMemo(() => selectedDeals.reduce((s, d) => s + d.upb, 0), [selectedDeals]);
+
+  const cardLabels: Record<string, string> = {
+    mtdAll: `${new Date().toLocaleString('en-US', { month: 'long' })} — All Complaints`,
+    mtdCriteria: `${new Date().toLocaleString('en-US', { month: 'long' })} — Criteria Deals`,
+    ytdCriteria: `${new Date().getFullYear()} YTD — Criteria Deals`,
+    thisWeek: 'This Week — Criteria Deals',
+  };
 
   const month = new Date().toLocaleString('en-US', { month: 'long' });
   const year = new Date().getFullYear();
 
+  const toggle = (key: string) => setSelectedCard(prev => prev === key ? null : key);
+
   return (
-    <div className="kpi-grid">
-      <KPICard
-        label={`${month} Complaints`}
-        value={metrics.mtdAll.toLocaleString()}
-        subLabel="All valid filings this month"
-        accent="blue"
-      />
-      <KPICard
-        label={`${month} Criteria Deals`}
-        value={metrics.mtdCriteria.toLocaleString()}
-        subLabel="Meets criteria this month"
-        accent="green"
-      />
-      <KPICard
-        label={`${month} Criteria UPB`}
-        value={formatCurrency(metrics.mtdUPB)}
-        subLabel="UPB meeting criteria MTD"
-        accent="blue"
-      />
-      <KPICard
-        label={`${year} YTD Criteria`}
-        value={metrics.ytdCriteria.toLocaleString()}
-        subLabel="Total deals meeting criteria YTD"
-        accent="green"
-      />
-      <KPICard
-        label="This Week"
-        value={metrics.thisWeek.toLocaleString()}
-        subLabel="Criteria deals, last 7 days"
-        trend={metrics.wow}
-        trendLabel="vs prior week"
-        accent={metrics.wow >= 0 ? 'green' : 'amber'}
-      />
-    </div>
+    <>
+      <div className="kpi-grid">
+        <KPICard
+          label={`${month} Complaints`}
+          value={metrics.mtdAll.toLocaleString()}
+          subLabel="All valid filings this month"
+          accent="blue"
+          selected={selectedCard === 'mtdAll'}
+          onClick={() => toggle('mtdAll')}
+        />
+        <KPICard
+          label={`${month} Criteria Deals`}
+          value={metrics.mtdCriteria.toLocaleString()}
+          subLabel="Meets criteria this month"
+          accent="green"
+          selected={selectedCard === 'mtdCriteria'}
+          onClick={() => toggle('mtdCriteria')}
+        />
+        <KPICard
+          label={`${month} Criteria UPB`}
+          value={formatCurrency(metrics.mtdUPB)}
+          subLabel="UPB meeting criteria MTD"
+          accent="blue"
+          selected={selectedCard === 'mtdCriteria'}
+          onClick={() => toggle('mtdCriteria')}
+        />
+        <KPICard
+          label={`${year} YTD Criteria`}
+          value={metrics.ytdCriteria.toLocaleString()}
+          subLabel="Total deals meeting criteria YTD"
+          accent="green"
+          selected={selectedCard === 'ytdCriteria'}
+          onClick={() => toggle('ytdCriteria')}
+        />
+        <KPICard
+          label="This Week"
+          value={metrics.thisWeek.toLocaleString()}
+          subLabel="Criteria deals, last 7 days"
+          trend={metrics.wow}
+          trendLabel="vs prior week"
+          accent={metrics.wow >= 0 ? 'green' : 'amber'}
+          selected={selectedCard === 'thisWeek'}
+          onClick={() => toggle('thisWeek')}
+        />
+      </div>
+
+      {selectedCard && (
+        <>
+          <div className="side-panel-overlay" onClick={() => setSelectedCard(null)} />
+          <div className="side-panel">
+            <div className="side-panel-header">
+              <div>
+                <h3 style={{ fontSize: '1.125rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>
+                  {cardLabels[selectedCard]}
+                </h3>
+                <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                  {selectedDeals.length} filing{selectedDeals.length !== 1 ? 's' : ''}
+                  {totalUPB > 0 && <> &bull; {formatCurrency(totalUPB)} total UPB</>}
+                </div>
+              </div>
+              <button className="side-panel-close" onClick={() => setSelectedCard(null)}>✕ Close</button>
+            </div>
+            <div className="side-panel-body">
+              {selectedDeals.length === 0 ? (
+                <div className="empty-state">No filings found.</div>
+              ) : (
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th onClick={() => handleDealSort('property')} className="sortable">Property Address <SortIcon field="property" /></th>
+                      <th onClick={() => handleDealSort('county')} className="sortable">County <SortIcon field="county" /></th>
+                      <th onClick={() => handleDealSort('lender')} className="sortable">Lender <SortIcon field="lender" /></th>
+                      <th onClick={() => handleDealSort('upb')} className="sortable text-right">UPB <SortIcon field="upb" /></th>
+                      <th onClick={() => handleDealSort('date')} className="sortable text-right">Date <SortIcon field="date" /></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedDeals.map((deal, idx) => (
+                      <tr key={idx}>
+                        <td>{deal.propertyAddress}</td>
+                        <td>{deal.county}</td>
+                        <td>{deal.lender}</td>
+                        <td className={`text-right currency-cell ${upbClass(deal.upb)}`}>{formatCurrency(deal.upb)}</td>
+                        <td className="text-right">{formatDate(deal.complaintDate)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </>
   );
 }

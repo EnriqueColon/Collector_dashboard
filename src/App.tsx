@@ -151,7 +151,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         <KPISummaryCards complaints={complaints} />
 
         <section id="section-rollup" className="dashboard-section">
-          <FourWeekRollUpWeeklyTable data={fourWeekRollUpWeekly} />
+          <FourWeekRollUpWeeklyTable data={fourWeekRollUpWeekly} complaints={complaints} />
         </section>
 
         <section id="section-heatmap" className="dashboard-section">
@@ -159,7 +159,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         </section>
 
         <section id="section-trends" className="dashboard-section">
-          <TopLendersMonthly data={monthlyLenders} monthlySummary={monthlyTrendSummary} />
+          <TopLendersMonthly data={monthlyLenders} monthlySummary={monthlyTrendSummary} complaints={complaints} />
         </section>
 
         <section id="section-lenders" className="dashboard-section">
