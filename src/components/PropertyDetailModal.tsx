@@ -9,12 +9,21 @@ interface Props {
 
 interface GeoResult { lat: number | null; lon: number | null; }
 
+// Split a multi-value cell on semicolons, trim whitespace/newlines from each part
+function splitCell(value: string | undefined): string[] {
+  if (!value) return [];
+  return value.split(';').map(s => s.replace(/\s+/g, ' ').trim()).filter(Boolean);
+}
+
+// Parse a currency string like "$467,022.00" → number, or null if zero/unparseable
 function parseVal(raw: string | undefined): number | null {
   if (!raw) return null;
-  const n = parseFloat(raw.replace(/[$,]/g, ''));
+  const cleaned = raw.replace(/[$,]/g, '').trim();
+  const n = parseFloat(cleaned);
   return isNaN(n) || n === 0 ? null : n;
 }
 
+// Format a decimal LTV ratio like 0.815 → "81.5%", or null if unavailable
 function formatLTV(raw: number | string | undefined): string | null {
   if (raw === undefined || raw === null || raw === '-' || raw === '') return null;
   const n = typeof raw === 'number' ? raw : parseFloat(raw as string);
@@ -25,38 +34,70 @@ function ltvRiskClass(raw: number | string | undefined): string {
   if (raw === undefined || raw === null || raw === '-' || raw === '') return '';
   const n = typeof raw === 'number' ? raw : parseFloat(raw as string);
   if (isNaN(n)) return '';
-  if (n > 1) return 'ltv-high';
+  if (n > 1)   return 'ltv-high';
   if (n > 0.8) return 'ltv-mid';
   return 'ltv-low';
 }
 
-interface ValuationRowProps {
-  label: string;
-  value: string | undefined;
-  ltv: number | string | undefined;
+interface PropertyValuationProps {
+  medianSqFt: string | undefined;
+  meanSqFt: string | undefined;
+  medianLot: string | undefined;
+  meanLot: string | undefined;
+  ltvMedianSqFt: number | string | undefined;
+  ltvMeanSqFt: number | string | undefined;
+  ltvMedianLot: number | string | undefined;
+  ltvMeanLot: number | string | undefined;
   upb: number;
 }
 
-function ValuationRow({ label, value, ltv, upb }: ValuationRowProps) {
-  const amount = parseVal(value);
-  const ltvStr = formatLTV(ltv);
-  const riskClass = ltvRiskClass(ltv);
+function PropertyValuation({
+  medianSqFt, meanSqFt, medianLot, meanLot,
+  ltvMedianSqFt, ltvMeanSqFt, ltvMedianLot, ltvMeanLot,
+  upb,
+}: PropertyValuationProps) {
+  const rows: { label: string; raw: string | undefined; ltv: number | string | undefined }[] = [
+    { label: 'Median ($/sq ft)',  raw: medianSqFt, ltv: ltvMedianSqFt },
+    { label: 'Mean ($/sq ft)',    raw: meanSqFt,   ltv: ltvMeanSqFt   },
+    { label: 'Median (lot size)', raw: medianLot,  ltv: ltvMedianLot  },
+    { label: 'Mean (lot size)',   raw: meanLot,    ltv: ltvMeanLot    },
+  ];
 
-  if (amount === null) return null;
+  const hasAny = rows.some(r => parseVal(r.raw) !== null);
+
+  if (!hasAny) {
+    // Show a reason if available (e.g. "Not processed", "sq. footage not found")
+    const reason = [medianSqFt, meanSqFt].find(v => v && v !== '$0.00');
+    return (
+      <div className="val-no-data">
+        {reason ? reason : 'No valuation data available'}
+      </div>
+    );
+  }
 
   return (
-    <div className="val-row">
-      <div className="val-label">{label}</div>
-      <div className="val-amount">{formatCurrency(amount)}</div>
-      <div className="val-vs-upb">
-        {amount > upb
-          ? <span className="val-tag val-tag-green">▲ {formatCurrency(amount - upb)} above UPB</span>
-          : <span className="val-tag val-tag-red">▼ {formatCurrency(upb - amount)} below UPB</span>
-        }
-      </div>
-      <div className={`val-ltv ${riskClass}`}>
-        {ltvStr ? `LTV ${ltvStr}` : '—'}
-      </div>
+    <div className="prop-valuation-rows">
+      {rows.map(({ label, raw, ltv }) => {
+        const amount = parseVal(raw);
+        if (amount === null) return null;
+        const ltvStr = formatLTV(ltv);
+        const riskClass = ltvRiskClass(ltv);
+        return (
+          <div key={label} className="val-row">
+            <div className="val-label">{label}</div>
+            <div className="val-amount">{formatCurrency(amount)}</div>
+            <div className="val-vs-upb">
+              {amount > upb
+                ? <span className="val-tag val-tag-green">▲ {formatCurrency(amount - upb)} above UPB</span>
+                : <span className="val-tag val-tag-red">▼ {formatCurrency(upb - amount)} below UPB</span>
+              }
+            </div>
+            <div className={`val-ltv ${riskClass}`}>
+              {ltvStr ?? '—'}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -81,7 +122,22 @@ export function PropertyDetailModal({ deal, onClose }: Props) {
     ? `https://www.openstreetmap.org/export/embed.html?bbox=${geo.lon - 0.008},${geo.lat - 0.008},${geo.lon + 0.008},${geo.lat + 0.008}&layer=mapnik&marker=${geo.lat},${geo.lon}`
     : null;
 
-  const hasValuation = parseVal(deal.valuationMedianSqFt) !== null || parseVal(deal.valuationMeanSqFt) !== null;
+  // Split all multi-value cells into per-property arrays
+  const addresses    = splitCell(deal.propertyAddress);
+  const medianSqFts  = splitCell(deal.valuationMedianSqFt);
+  const meanSqFts    = splitCell(deal.valuationMeanSqFt);
+  const medianLots   = splitCell(deal.valuationMedianLot);
+  const meanLots     = splitCell(deal.valuationMeanLot);
+  const ltvMedSqFts  = splitCell(typeof deal.ltvMedianSqFt === 'number' ? String(deal.ltvMedianSqFt) : deal.ltvMedianSqFt);
+  const ltvMeanSqFts = splitCell(typeof deal.ltvMeanSqFt  === 'number' ? String(deal.ltvMeanSqFt)  : deal.ltvMeanSqFt);
+  const ltvMedLots   = splitCell(typeof deal.ltvMedianLot === 'number' ? String(deal.ltvMedianLot) : deal.ltvMedianLot);
+  const ltvMeanLots  = splitCell(typeof deal.ltvMeanLot   === 'number' ? String(deal.ltvMeanLot)   : deal.ltvMeanLot);
+
+  const propertyCount = Math.max(addresses.length, 1);
+  const isMulti = propertyCount > 1;
+
+  // Check if any valuation data exists across all properties
+  const hasValuation = [...medianSqFts, ...meanSqFts].some(v => parseVal(v) !== null);
 
   return (
     <div className="prop-modal-overlay" onClick={onClose}>
@@ -90,7 +146,9 @@ export function PropertyDetailModal({ deal, onClose }: Props) {
         {/* Header */}
         <div className="prop-modal-header">
           <div>
-            <h2 className="prop-modal-address">{deal.propertyAddress}</h2>
+            <h2 className="prop-modal-address">
+              {isMulti ? `${propertyCount} Properties` : deal.propertyAddress}
+            </h2>
             <div className="prop-modal-meta">
               {deal.county} County &bull; {deal.lender} &bull; Filed {formatDate(deal.complaintDate)}
             </div>
@@ -113,6 +171,19 @@ export function PropertyDetailModal({ deal, onClose }: Props) {
                 </div>
               </div>
             </div>
+
+            {/* Address list for multi-property */}
+            {isMulti && (
+              <div className="prop-address-list">
+                <div className="prop-address-list-label">Properties in this filing</div>
+                {addresses.map((addr, i) => (
+                  <div key={i} className="prop-address-list-item">
+                    <span className="prop-address-num">{i + 1}</span>
+                    {addr}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Right column — map */}
@@ -133,36 +204,47 @@ export function PropertyDetailModal({ deal, onClose }: Props) {
         </div>
 
         {/* Valuation section */}
-        {hasValuation && (
+        {(hasValuation || medianSqFts.length > 0) && (
           <div className="prop-valuation-section">
             <div className="prop-valuation-title">Property Valuation Estimates</div>
-            <div className="prop-valuation-subtitle">Automated comparables · vs. UPB of {formatCurrency(deal.upb)}</div>
-            <div className="prop-valuation-rows">
-              <ValuationRow
-                label="Median ($/sq ft)"
-                value={deal.valuationMedianSqFt}
-                ltv={deal.ltvMedianSqFt}
-                upb={deal.upb}
-              />
-              <ValuationRow
-                label="Mean ($/sq ft)"
-                value={deal.valuationMeanSqFt}
-                ltv={deal.ltvMeanSqFt}
-                upb={deal.upb}
-              />
-              <ValuationRow
-                label="Median (lot size)"
-                value={deal.valuationMedianLot}
-                ltv={deal.ltvMedianLot}
-                upb={deal.upb}
-              />
-              <ValuationRow
-                label="Mean (lot size)"
-                value={deal.valuationMeanLot}
-                ltv={deal.ltvMeanLot}
-                upb={deal.upb}
-              />
+            <div className="prop-valuation-subtitle">
+              Automated comparables &bull; vs. UPB of {formatCurrency(deal.upb)}
             </div>
+
+            {isMulti ? (
+              // One block per property
+              Array.from({ length: propertyCount }).map((_, i) => (
+                <div key={i} className="prop-valuation-property-block">
+                  <div className="prop-valuation-property-label">
+                    <span className="prop-address-num">{i + 1}</span>
+                    {addresses[i] ?? `Property ${i + 1}`}
+                  </div>
+                  <PropertyValuation
+                    medianSqFt={medianSqFts[i]}
+                    meanSqFt={meanSqFts[i]}
+                    medianLot={medianLots[i]}
+                    meanLot={meanLots[i]}
+                    ltvMedianSqFt={ltvMedSqFts[i]}
+                    ltvMeanSqFt={ltvMeanSqFts[i]}
+                    ltvMedianLot={ltvMedLots[i]}
+                    ltvMeanLot={ltvMeanLots[i]}
+                    upb={deal.upb}
+                  />
+                </div>
+              ))
+            ) : (
+              <PropertyValuation
+                medianSqFt={medianSqFts[0]}
+                meanSqFt={meanSqFts[0]}
+                medianLot={medianLots[0]}
+                meanLot={meanLots[0]}
+                ltvMedianSqFt={ltvMedSqFts[0]}
+                ltvMeanSqFt={ltvMeanSqFts[0]}
+                ltvMedianLot={ltvMedLots[0]}
+                ltvMeanLot={ltvMeanLots[0]}
+                upb={deal.upb}
+              />
+            )}
           </div>
         )}
 
