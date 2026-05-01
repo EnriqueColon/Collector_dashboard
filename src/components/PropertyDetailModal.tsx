@@ -1,12 +1,59 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import { FlowThroughDeal } from '../types';
 import { formatCurrency, formatDate } from '../utils/calculations';
 
-interface Props {
-  deal: FlowThroughDeal;
-  onClose: () => void;
+// ── Leaflet icon fix (bundlers strip the default asset resolution) ───────────
+const defaultIcon = L.icon({
+  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+  iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41],
+});
+
+const numberedIcon = (n: number, active: boolean) =>
+  L.divIcon({
+    className: '',
+    html: `<div class="map-pin${active ? ' map-pin-active' : ''}"><span>${n}</span></div>`,
+    iconSize: [28, 28],
+    iconAnchor: [14, 28],
+    popupAnchor: [0, -30],
+  });
+
+// ── Fly to a position when it changes ────────────────────────────────────────
+function MapFlyTo({ lat, lon }: { lat: number; lon: number }) {
+  const map = useMap();
+  const prev = useRef<string>('');
+  useEffect(() => {
+    const key = `${lat},${lon}`;
+    if (key !== prev.current) {
+      prev.current = key;
+      map.flyTo([lat, lon], 16, { duration: 0.6 });
+    }
+  }, [lat, lon, map]);
+  return null;
 }
 
+// ── Fit all markers in view on first render ───────────────────────────────────
+function MapFitBounds({ positions }: { positions: [number, number][] }) {
+  const map = useMap();
+  const fitted = useRef(false);
+  useEffect(() => {
+    if (fitted.current || positions.length === 0) return;
+    fitted.current = true;
+    if (positions.length === 1) {
+      map.setView(positions[0], 15);
+    } else {
+      map.fitBounds(L.latLngBounds(positions), { padding: [40, 40] });
+    }
+  }, [positions, map]);
+  return null;
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+interface Props { deal: FlowThroughDeal; onClose: () => void; }
 interface GeoResult { lat: number | null; lon: number | null; }
 
 function splitCell(value: string | undefined): string[] {
@@ -26,51 +73,38 @@ function ltvRiskClass(ratio: number): string {
   return 'ltv-low';
 }
 
-// ── Single-property valuation rows (accurate UPB comparison + LTV) ──────────
+// ── Single-property valuation rows ────────────────────────────────────────────
 interface SingleValuationProps {
-  medianSqFt: string | undefined;
-  meanSqFt: string | undefined;
-  medianLot: string | undefined;
-  meanLot: string | undefined;
-  ltvMedianSqFt: number | string | undefined;
-  ltvMeanSqFt: number | string | undefined;
-  ltvMedianLot: number | string | undefined;
-  ltvMeanLot: number | string | undefined;
+  medianSqFt: string | undefined; meanSqFt: string | undefined;
+  medianLot: string | undefined;  meanLot: string | undefined;
+  ltvMedianSqFt: number | string | undefined; ltvMeanSqFt: number | string | undefined;
+  ltvMedianLot: number | string | undefined;  ltvMeanLot: number | string | undefined;
   upb: number;
 }
 
-function SingleValuation({
-  medianSqFt, meanSqFt, medianLot, meanLot,
-  ltvMedianSqFt, ltvMeanSqFt, ltvMedianLot, ltvMeanLot,
-  upb,
-}: SingleValuationProps) {
+function SingleValuation({ medianSqFt, meanSqFt, medianLot, meanLot,
+  ltvMedianSqFt, ltvMeanSqFt, ltvMedianLot, ltvMeanLot, upb }: SingleValuationProps) {
   const rows = [
     { label: 'Median ($/sq ft)',  raw: medianSqFt, sheetLtv: ltvMedianSqFt },
     { label: 'Mean ($/sq ft)',    raw: meanSqFt,   sheetLtv: ltvMeanSqFt   },
     { label: 'Median (lot size)', raw: medianLot,  sheetLtv: ltvMedianLot  },
     { label: 'Mean (lot size)',   raw: meanLot,    sheetLtv: ltvMeanLot    },
   ];
-
   const hasAny = rows.some(r => parseVal(r.raw) !== null);
   if (!hasAny) {
     const reason = [medianSqFt, meanSqFt].find(v => v && v !== '$0.00');
     return <div className="val-no-data">{reason ?? 'No valuation data available'}</div>;
   }
-
   return (
     <div className="prop-valuation-rows">
       {rows.map(({ label, raw, sheetLtv }) => {
         const amount = parseVal(raw);
         if (amount === null) return null;
-
-        // Use sheet LTV if available, otherwise calculate
         const hasSheetLtv = sheetLtv !== undefined && sheetLtv !== null && sheetLtv !== '-' && sheetLtv !== '';
         const ratio = hasSheetLtv
           ? (typeof sheetLtv === 'number' ? sheetLtv : parseFloat(sheetLtv as string))
           : upb / amount;
         const ltvStr = `${(ratio * 100).toFixed(1)}%${hasSheetLtv ? '' : ' *'}`;
-        const riskClass = ltvRiskClass(ratio);
-
         return (
           <div key={label} className="val-row">
             <div className="val-label">{label}</div>
@@ -78,10 +112,10 @@ function SingleValuation({
             <div className="val-vs-upb">
               {amount >= upb
                 ? <span className="val-tag val-tag-green">▲ {formatCurrency(amount - upb)} above UPB</span>
-                : <span className="val-tag val-tag-red">▼ {formatCurrency(upb - amount)} below UPB</span>
-              }
+                : <span className="val-tag val-tag-red">▼ {formatCurrency(upb - amount)} below UPB</span>}
             </div>
-            <div className={`val-ltv ${riskClass}`} title={!hasSheetLtv ? 'Calculated: UPB ÷ estimated value' : undefined}>
+            <div className={`val-ltv ${ltvRiskClass(ratio)}`}
+              title={!hasSheetLtv ? 'Calculated: UPB ÷ estimated value' : undefined}>
               {ltvStr}
             </div>
           </div>
@@ -91,10 +125,9 @@ function SingleValuation({
   );
 }
 
-// ── Multi-property: individual property values only (no per-property UPB) ───
+// ── Multi-property valuation ──────────────────────────────────────────────────
 function MultiPropertyValuation({ label, values }: { label: string; values: (number | null)[] }) {
-  const valid = values.filter((v): v is number => v !== null);
-  if (valid.length === 0) return null;
+  if (values.filter((v): v is number => v !== null).length === 0) return null;
   return (
     <div className="val-multi-method">
       <div className="val-multi-method-label">{label}</div>
@@ -110,17 +143,9 @@ function MultiPropertyValuation({ label, values }: { label: string; values: (num
   );
 }
 
-// ── Multi-property summary: total collateral vs total UPB ───────────────────
-interface SummaryRowProps {
-  label: string;
-  totalValue: number | null;
-  upb: number;
-}
-
-function SummaryRow({ label, totalValue, upb }: SummaryRowProps) {
+function SummaryRow({ label, totalValue, upb }: { label: string; totalValue: number | null; upb: number }) {
   if (totalValue === null) return null;
   const ratio = upb / totalValue;
-  const riskClass = ltvRiskClass(ratio);
   return (
     <div className="val-summary-row">
       <div className="val-label">{label}</div>
@@ -128,34 +153,17 @@ function SummaryRow({ label, totalValue, upb }: SummaryRowProps) {
       <div className="val-vs-upb">
         {totalValue >= upb
           ? <span className="val-tag val-tag-green">▲ {formatCurrency(totalValue - upb)} above UPB</span>
-          : <span className="val-tag val-tag-red">▼ {formatCurrency(upb - totalValue)} below UPB</span>
-        }
+          : <span className="val-tag val-tag-red">▼ {formatCurrency(upb - totalValue)} below UPB</span>}
       </div>
-      <div className={`val-ltv ${riskClass}`}>{(ratio * 100).toFixed(1)}%</div>
+      <div className={`val-ltv ${ltvRiskClass(ratio)}`}>{(ratio * 100).toFixed(1)}%</div>
     </div>
   );
 }
 
-// ── Main modal ───────────────────────────────────────────────────────────────
+// ── Main modal ────────────────────────────────────────────────────────────────
 export function PropertyDetailModal({ deal, onClose }: Props) {
-  const [geo, setGeo] = useState<GeoResult | null>(null);
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [onClose]);
-
-  useEffect(() => {
-    fetch(`/api/geocode?address=${encodeURIComponent(deal.propertyAddress + ', NY')}`)
-      .then(r => r.json())
-      .then(setGeo)
-      .catch(() => setGeo({ lat: null, lon: null }));
-  }, [deal.propertyAddress]);
-
-  const mapUrl = geo?.lat && geo?.lon
-    ? `https://www.openstreetmap.org/export/embed.html?bbox=${geo.lon - 0.008},${geo.lat - 0.008},${geo.lon + 0.008},${geo.lat + 0.008}&layer=mapnik&marker=${geo.lat},${geo.lon}`
-    : null;
+  const [geoResults, setGeoResults] = useState<(GeoResult | null)[]>([]);
+  const [selectedIdx, setSelectedIdx] = useState(0);
 
   const addresses   = splitCell(deal.propertyAddress);
   const medianSqFts = splitCell(deal.valuationMedianSqFt);
@@ -170,13 +178,41 @@ export function PropertyDetailModal({ deal, onClose }: Props) {
   const propertyCount = Math.max(addresses.length, 1);
   const isMulti = propertyCount > 1;
 
-  // Per-property parsed values (for multi summary)
+  // Close on Escape
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  // Geocode each address in parallel
+  useEffect(() => {
+    setGeoResults([]);
+    setSelectedIdx(0);
+    const targets = addresses.length > 0 ? addresses : [deal.propertyAddress];
+    Promise.all(
+      targets.map(addr =>
+        fetch(`/api/geocode?address=${encodeURIComponent(addr + ', NY')}`)
+          .then(r => r.json())
+          .catch(() => ({ lat: null, lon: null }))
+      )
+    ).then(setGeoResults);
+  }, [deal.propertyAddress]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const validPositions = geoResults
+    .map((g, i) => (g?.lat && g?.lon ? { pos: [g.lat, g.lon] as [number, number], idx: i } : null))
+    .filter((x): x is { pos: [number, number]; idx: number } => x !== null);
+
+  const selectedGeo = geoResults[selectedIdx];
+  const hasMap = validPositions.length > 0;
+  const mapLoading = geoResults.length === 0;
+
+  // Valuation aggregates
   const parsedMedianSqFts = medianSqFts.map(parseVal);
   const parsedMeanSqFts   = meanSqFts.map(parseVal);
   const parsedMedianLots  = medianLots.map(parseVal);
   const parsedMeanLots    = meanLots.map(parseVal);
 
-  // Only sum when every property has data — partial totals vs. full UPB are misleading
   const sumIfComplete = (arr: (number | null)[]) => {
     if (arr.length < propertyCount || arr.some(v => v === null)) return null;
     return (arr as number[]).reduce((a, b) => a + b, 0);
@@ -186,7 +222,6 @@ export function PropertyDetailModal({ deal, onClose }: Props) {
   const totalMeanSqFt   = sumIfComplete(parsedMeanSqFts);
   const totalMedianLot  = sumIfComplete(parsedMedianLots);
   const totalMeanLot    = sumIfComplete(parsedMeanLots);
-
   const hasValuation = [...medianSqFts, ...meanSqFts].some(v => parseVal(v) !== null);
 
   return (
@@ -222,27 +257,69 @@ export function PropertyDetailModal({ deal, onClose }: Props) {
               </div>
             </div>
 
+            {/* Address list — clickable for multi-property */}
             {isMulti && (
               <div className="prop-address-list">
                 <div className="prop-address-list-label">Properties in this filing</div>
-                {addresses.map((addr, i) => (
-                  <div key={i} className="prop-address-list-item">
-                    <span className="prop-address-num">{i + 1}</span>
-                    {addr}
-                  </div>
-                ))}
+                {addresses.map((addr, i) => {
+                  const geo = geoResults[i];
+                  const geocoded = geo?.lat && geo?.lon;
+                  return (
+                    <div
+                      key={i}
+                      className={`prop-address-list-item${selectedIdx === i ? ' prop-address-selected' : ''}${geocoded ? ' prop-address-clickable' : ''}`}
+                      onClick={() => { if (geocoded) setSelectedIdx(i); }}
+                      title={geocoded ? 'Click to view on map' : 'Address could not be mapped'}
+                    >
+                      <span className={`prop-address-num${selectedIdx === i ? ' prop-address-num-active' : ''}`}>{i + 1}</span>
+                      <span className="prop-address-text">{addr}</span>
+                      {geocoded
+                        ? <span className="prop-address-map-icon" title="Mapped">📍</span>
+                        : <span className="prop-address-no-map" title="Not mapped">—</span>}
+                    </div>
+                  );
+                })}
+                {validPositions.length > 1 && (
+                  <div className="prop-address-hint">Click an address to focus the map</div>
+                )}
               </div>
             )}
           </div>
 
-          {/* Right column — map */}
+          {/* Right column — Leaflet map */}
           <div className="prop-modal-right">
-            {mapUrl ? (
-              <iframe src={mapUrl} className="prop-map-iframe" title="Property location" loading="lazy" />
+            {mapLoading ? (
+              <div className="prop-map-placeholder">Loading map…</div>
+            ) : !hasMap ? (
+              <div className="prop-map-placeholder">Map unavailable for this address</div>
             ) : (
-              <div className="prop-map-placeholder">
-                {geo === null ? 'Loading map…' : 'Map unavailable for this address'}
-              </div>
+              <MapContainer
+                key={deal.propertyAddress}
+                center={validPositions[0].pos}
+                zoom={15}
+                className="prop-map-leaflet"
+                scrollWheelZoom={false}
+                zoomControl={true}
+              >
+                <TileLayer
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  attribution='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                />
+                <MapFitBounds positions={validPositions.map(v => v.pos)} />
+                {selectedGeo?.lat && selectedGeo?.lon && (
+                  <MapFlyTo lat={selectedGeo.lat} lon={selectedGeo.lon} />
+                )}
+                {validPositions.map(({ pos, idx }) => (
+                  <Marker
+                    key={idx}
+                    position={pos}
+                    icon={isMulti ? numberedIcon(idx + 1, idx === selectedIdx) : defaultIcon}
+                    eventHandlers={{ click: () => setSelectedIdx(idx) }}
+                  >
+                    <Popup>{addresses[idx] ?? deal.propertyAddress}</Popup>
+                  </Marker>
+                ))}
+              </MapContainer>
             )}
           </div>
         </div>
@@ -257,16 +334,12 @@ export function PropertyDetailModal({ deal, onClose }: Props) {
                 <div className="prop-valuation-subtitle">
                   Estimated value per property &bull; Automated comparables
                 </div>
-
-                {/* Per-property values grouped by method */}
                 <div className="val-multi-grid">
                   <MultiPropertyValuation label="Median ($/sq ft)"  values={parsedMedianSqFts} />
                   <MultiPropertyValuation label="Mean ($/sq ft)"    values={parsedMeanSqFts}   />
                   <MultiPropertyValuation label="Median (lot size)" values={parsedMedianLots}  />
                   <MultiPropertyValuation label="Mean (lot size)"   values={parsedMeanLots}    />
                 </div>
-
-                {/* Aggregate summary — only shown when all properties have data */}
                 {[totalMedianSqFt, totalMeanSqFt, totalMedianLot, totalMeanLot].some(v => v !== null) ? (
                   <div className="val-summary-block">
                     <div className="val-summary-title">
@@ -291,14 +364,10 @@ export function PropertyDetailModal({ deal, onClose }: Props) {
                   Automated comparables &bull; vs. UPB of {formatCurrency(deal.upb)} &bull; * LTV calculated (UPB ÷ estimate)
                 </div>
                 <SingleValuation
-                  medianSqFt={medianSqFts[0]}
-                  meanSqFt={meanSqFts[0]}
-                  medianLot={medianLots[0]}
-                  meanLot={meanLots[0]}
-                  ltvMedianSqFt={ltvMedSqFts[0]}
-                  ltvMeanSqFt={ltvMeanSqFts[0]}
-                  ltvMedianLot={ltvMedLots[0]}
-                  ltvMeanLot={ltvMeanLots[0]}
+                  medianSqFt={medianSqFts[0]} meanSqFt={meanSqFts[0]}
+                  medianLot={medianLots[0]}   meanLot={meanLots[0]}
+                  ltvMedianSqFt={ltvMedSqFts[0]} ltvMeanSqFt={ltvMeanSqFts[0]}
+                  ltvMedianLot={ltvMedLots[0]}   ltvMeanLot={ltvMeanLots[0]}
                   upb={deal.upb}
                 />
               </>
