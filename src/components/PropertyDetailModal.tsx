@@ -9,53 +9,25 @@ interface Props {
 
 interface GeoResult { lat: number | null; lon: number | null; }
 
-// Split a multi-value cell on semicolons, trim whitespace/newlines from each part
 function splitCell(value: string | undefined): string[] {
   if (!value) return [];
   return value.split(';').map(s => s.replace(/\s+/g, ' ').trim()).filter(Boolean);
 }
 
-// Parse a currency string like "$467,022.00" → number, or null if zero/unparseable
 function parseVal(raw: string | undefined): number | null {
   if (!raw) return null;
-  const cleaned = raw.replace(/[$,]/g, '').trim();
-  const n = parseFloat(cleaned);
+  const n = parseFloat(raw.replace(/[$,]/g, '').trim());
   return isNaN(n) || n === 0 ? null : n;
 }
 
-// Format a decimal LTV ratio like 0.815 → "81.5%", or calculate from UPB/value if missing
-function formatLTV(raw: number | string | undefined, upb?: number, valuationAmount?: number | null): string | null {
-  const hasRaw = raw !== undefined && raw !== null && raw !== '-' && raw !== '';
-  if (hasRaw) {
-    const n = typeof raw === 'number' ? raw : parseFloat(raw as string);
-    if (!isNaN(n)) return `${(n * 100).toFixed(1)}%`;
-  }
-  // Fall back to calculating from UPB ÷ valuation
-  if (upb && valuationAmount && valuationAmount > 0) {
-    return `${((upb / valuationAmount) * 100).toFixed(1)}% *`;
-  }
-  return null;
-}
-
-function ltvRatio(raw: number | string | undefined, upb?: number, valuationAmount?: number | null): number | null {
-  const hasRaw = raw !== undefined && raw !== null && raw !== '-' && raw !== '';
-  if (hasRaw) {
-    const n = typeof raw === 'number' ? raw : parseFloat(raw as string);
-    if (!isNaN(n)) return n;
-  }
-  if (upb && valuationAmount && valuationAmount > 0) return upb / valuationAmount;
-  return null;
-}
-
-function ltvRiskClass(raw: number | string | undefined, upb?: number, valuationAmount?: number | null): string {
-  const n = ltvRatio(raw, upb, valuationAmount);
-  if (n === null) return '';
-  if (n > 1)   return 'ltv-high';
-  if (n > 0.8) return 'ltv-mid';
+function ltvRiskClass(ratio: number): string {
+  if (ratio > 1)   return 'ltv-high';
+  if (ratio > 0.8) return 'ltv-mid';
   return 'ltv-low';
 }
 
-interface PropertyValuationProps {
+// ── Single-property valuation rows (accurate UPB comparison + LTV) ──────────
+interface SingleValuationProps {
   medianSqFt: string | undefined;
   meanSqFt: string | undefined;
   medianLot: string | undefined;
@@ -67,50 +39,50 @@ interface PropertyValuationProps {
   upb: number;
 }
 
-function PropertyValuation({
+function SingleValuation({
   medianSqFt, meanSqFt, medianLot, meanLot,
   ltvMedianSqFt, ltvMeanSqFt, ltvMedianLot, ltvMeanLot,
   upb,
-}: PropertyValuationProps) {
-  const rows: { label: string; raw: string | undefined; ltv: number | string | undefined }[] = [
-    { label: 'Median ($/sq ft)',  raw: medianSqFt, ltv: ltvMedianSqFt },
-    { label: 'Mean ($/sq ft)',    raw: meanSqFt,   ltv: ltvMeanSqFt   },
-    { label: 'Median (lot size)', raw: medianLot,  ltv: ltvMedianLot  },
-    { label: 'Mean (lot size)',   raw: meanLot,    ltv: ltvMeanLot    },
+}: SingleValuationProps) {
+  const rows = [
+    { label: 'Median ($/sq ft)',  raw: medianSqFt, sheetLtv: ltvMedianSqFt },
+    { label: 'Mean ($/sq ft)',    raw: meanSqFt,   sheetLtv: ltvMeanSqFt   },
+    { label: 'Median (lot size)', raw: medianLot,  sheetLtv: ltvMedianLot  },
+    { label: 'Mean (lot size)',   raw: meanLot,    sheetLtv: ltvMeanLot    },
   ];
 
   const hasAny = rows.some(r => parseVal(r.raw) !== null);
-
   if (!hasAny) {
-    // Show a reason if available (e.g. "Not processed", "sq. footage not found")
     const reason = [medianSqFt, meanSqFt].find(v => v && v !== '$0.00');
-    return (
-      <div className="val-no-data">
-        {reason ? reason : 'No valuation data available'}
-      </div>
-    );
+    return <div className="val-no-data">{reason ?? 'No valuation data available'}</div>;
   }
 
   return (
     <div className="prop-valuation-rows">
-      {rows.map(({ label, raw, ltv }) => {
+      {rows.map(({ label, raw, sheetLtv }) => {
         const amount = parseVal(raw);
         if (amount === null) return null;
-        const ltvStr = formatLTV(ltv, upb, amount);
-        const riskClass = ltvRiskClass(ltv, upb, amount);
-        const isCalculated = ltvStr?.endsWith('*');
+
+        // Use sheet LTV if available, otherwise calculate
+        const hasSheetLtv = sheetLtv !== undefined && sheetLtv !== null && sheetLtv !== '-' && sheetLtv !== '';
+        const ratio = hasSheetLtv
+          ? (typeof sheetLtv === 'number' ? sheetLtv : parseFloat(sheetLtv as string))
+          : upb / amount;
+        const ltvStr = `${(ratio * 100).toFixed(1)}%${hasSheetLtv ? '' : ' *'}`;
+        const riskClass = ltvRiskClass(ratio);
+
         return (
           <div key={label} className="val-row">
             <div className="val-label">{label}</div>
             <div className="val-amount">{formatCurrency(amount)}</div>
             <div className="val-vs-upb">
-              {amount > upb
+              {amount >= upb
                 ? <span className="val-tag val-tag-green">▲ {formatCurrency(amount - upb)} above UPB</span>
                 : <span className="val-tag val-tag-red">▼ {formatCurrency(upb - amount)} below UPB</span>
               }
             </div>
-            <div className={`val-ltv ${riskClass}`} title={isCalculated ? 'Calculated: UPB ÷ estimated value' : undefined}>
-              {ltvStr ?? '—'}
+            <div className={`val-ltv ${riskClass}`} title={!hasSheetLtv ? 'Calculated: UPB ÷ estimated value' : undefined}>
+              {ltvStr}
             </div>
           </div>
         );
@@ -119,6 +91,52 @@ function PropertyValuation({
   );
 }
 
+// ── Multi-property: individual property values only (no per-property UPB) ───
+function MultiPropertyValuation({ label, values }: { label: string; values: (number | null)[] }) {
+  const valid = values.filter((v): v is number => v !== null);
+  if (valid.length === 0) return null;
+  return (
+    <div className="val-multi-method">
+      <div className="val-multi-method-label">{label}</div>
+      <div className="val-multi-method-values">
+        {values.map((v, i) => (
+          <div key={i} className="val-multi-prop-amount">
+            <span className="prop-address-num" style={{ fontSize: '0.6rem' }}>{i + 1}</span>
+            {v !== null ? formatCurrency(v) : <span className="val-no-data-inline">—</span>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Multi-property summary: total collateral vs total UPB ───────────────────
+interface SummaryRowProps {
+  label: string;
+  totalValue: number | null;
+  upb: number;
+}
+
+function SummaryRow({ label, totalValue, upb }: SummaryRowProps) {
+  if (totalValue === null) return null;
+  const ratio = upb / totalValue;
+  const riskClass = ltvRiskClass(ratio);
+  return (
+    <div className="val-summary-row">
+      <div className="val-label">{label}</div>
+      <div className="val-amount">{formatCurrency(totalValue)}</div>
+      <div className="val-vs-upb">
+        {totalValue >= upb
+          ? <span className="val-tag val-tag-green">▲ {formatCurrency(totalValue - upb)} above UPB</span>
+          : <span className="val-tag val-tag-red">▼ {formatCurrency(upb - totalValue)} below UPB</span>
+        }
+      </div>
+      <div className={`val-ltv ${riskClass}`}>{(ratio * 100).toFixed(1)}%</div>
+    </div>
+  );
+}
+
+// ── Main modal ───────────────────────────────────────────────────────────────
 export function PropertyDetailModal({ deal, onClose }: Props) {
   const [geo, setGeo] = useState<GeoResult | null>(null);
 
@@ -139,12 +157,11 @@ export function PropertyDetailModal({ deal, onClose }: Props) {
     ? `https://www.openstreetmap.org/export/embed.html?bbox=${geo.lon - 0.008},${geo.lat - 0.008},${geo.lon + 0.008},${geo.lat + 0.008}&layer=mapnik&marker=${geo.lat},${geo.lon}`
     : null;
 
-  // Split all multi-value cells into per-property arrays
-  const addresses    = splitCell(deal.propertyAddress);
-  const medianSqFts  = splitCell(deal.valuationMedianSqFt);
-  const meanSqFts    = splitCell(deal.valuationMeanSqFt);
-  const medianLots   = splitCell(deal.valuationMedianLot);
-  const meanLots     = splitCell(deal.valuationMeanLot);
+  const addresses   = splitCell(deal.propertyAddress);
+  const medianSqFts = splitCell(deal.valuationMedianSqFt);
+  const meanSqFts   = splitCell(deal.valuationMeanSqFt);
+  const medianLots  = splitCell(deal.valuationMedianLot);
+  const meanLots    = splitCell(deal.valuationMeanLot);
   const ltvMedSqFts  = splitCell(typeof deal.ltvMedianSqFt === 'number' ? String(deal.ltvMedianSqFt) : deal.ltvMedianSqFt);
   const ltvMeanSqFts = splitCell(typeof deal.ltvMeanSqFt  === 'number' ? String(deal.ltvMeanSqFt)  : deal.ltvMeanSqFt);
   const ltvMedLots   = splitCell(typeof deal.ltvMedianLot === 'number' ? String(deal.ltvMedianLot) : deal.ltvMedianLot);
@@ -153,7 +170,22 @@ export function PropertyDetailModal({ deal, onClose }: Props) {
   const propertyCount = Math.max(addresses.length, 1);
   const isMulti = propertyCount > 1;
 
-  // Check if any valuation data exists across all properties
+  // Per-property parsed values (for multi summary)
+  const parsedMedianSqFts = medianSqFts.map(parseVal);
+  const parsedMeanSqFts   = meanSqFts.map(parseVal);
+  const parsedMedianLots  = medianLots.map(parseVal);
+  const parsedMeanLots    = meanLots.map(parseVal);
+
+  const sum = (arr: (number | null)[]) => {
+    const valid = arr.filter((v): v is number => v !== null);
+    return valid.length > 0 ? valid.reduce((a, b) => a + b, 0) : null;
+  };
+
+  const totalMedianSqFt = sum(parsedMedianSqFts);
+  const totalMeanSqFt   = sum(parsedMeanSqFts);
+  const totalMedianLot  = sum(parsedMedianLots);
+  const totalMeanLot    = sum(parsedMeanLots);
+
   const hasValuation = [...medianSqFts, ...meanSqFts].some(v => parseVal(v) !== null);
 
   return (
@@ -189,7 +221,6 @@ export function PropertyDetailModal({ deal, onClose }: Props) {
               </div>
             </div>
 
-            {/* Address list for multi-property */}
             {isMulti && (
               <div className="prop-address-list">
                 <div className="prop-address-list-label">Properties in this filing</div>
@@ -206,12 +237,7 @@ export function PropertyDetailModal({ deal, onClose }: Props) {
           {/* Right column — map */}
           <div className="prop-modal-right">
             {mapUrl ? (
-              <iframe
-                src={mapUrl}
-                className="prop-map-iframe"
-                title="Property location"
-                loading="lazy"
-              />
+              <iframe src={mapUrl} className="prop-map-iframe" title="Property location" loading="lazy" />
             ) : (
               <div className="prop-map-placeholder">
                 {geo === null ? 'Loading map…' : 'Map unavailable for this address'}
@@ -224,44 +250,51 @@ export function PropertyDetailModal({ deal, onClose }: Props) {
         {(hasValuation || medianSqFts.length > 0) && (
           <div className="prop-valuation-section">
             <div className="prop-valuation-title">Property Valuation Estimates</div>
-            <div className="prop-valuation-subtitle">
-              Automated comparables &bull; * LTV calculated (UPB ÷ estimate)
-              {isMulti && <> &bull; UPB split equally across {propertyCount} properties ({formatCurrency(deal.upb / propertyCount)} each)</>}
-            </div>
 
             {isMulti ? (
-              // One block per property — UPB split equally across all properties
-              Array.from({ length: propertyCount }).map((_, i) => (
-                <div key={i} className="prop-valuation-property-block">
-                  <div className="prop-valuation-property-label">
-                    <span className="prop-address-num">{i + 1}</span>
-                    {addresses[i] ?? `Property ${i + 1}`}
-                  </div>
-                  <PropertyValuation
-                    medianSqFt={medianSqFts[i]}
-                    meanSqFt={meanSqFts[i]}
-                    medianLot={medianLots[i]}
-                    meanLot={meanLots[i]}
-                    ltvMedianSqFt={ltvMedSqFts[i]}
-                    ltvMeanSqFt={ltvMeanSqFts[i]}
-                    ltvMedianLot={ltvMedLots[i]}
-                    ltvMeanLot={ltvMeanLots[i]}
-                    upb={deal.upb / propertyCount}
-                  />
+              <>
+                <div className="prop-valuation-subtitle">
+                  Estimated value per property &bull; Automated comparables
                 </div>
-              ))
+
+                {/* Per-property values grouped by method */}
+                <div className="val-multi-grid">
+                  <MultiPropertyValuation label="Median ($/sq ft)"  values={parsedMedianSqFts} />
+                  <MultiPropertyValuation label="Mean ($/sq ft)"    values={parsedMeanSqFts}   />
+                  <MultiPropertyValuation label="Median (lot size)" values={parsedMedianLots}  />
+                  <MultiPropertyValuation label="Mean (lot size)"   values={parsedMeanLots}    />
+                </div>
+
+                {/* Aggregate summary */}
+                <div className="val-summary-block">
+                  <div className="val-summary-title">
+                    Combined Collateral vs. Total UPB ({formatCurrency(deal.upb)})
+                  </div>
+                  <div className="prop-valuation-rows">
+                    <SummaryRow label="Total — Median ($/sq ft)"  totalValue={totalMedianSqFt} upb={deal.upb} />
+                    <SummaryRow label="Total — Mean ($/sq ft)"    totalValue={totalMeanSqFt}   upb={deal.upb} />
+                    <SummaryRow label="Total — Median (lot size)" totalValue={totalMedianLot}  upb={deal.upb} />
+                    <SummaryRow label="Total — Mean (lot size)"   totalValue={totalMeanLot}    upb={deal.upb} />
+                  </div>
+                </div>
+              </>
             ) : (
-              <PropertyValuation
-                medianSqFt={medianSqFts[0]}
-                meanSqFt={meanSqFts[0]}
-                medianLot={medianLots[0]}
-                meanLot={meanLots[0]}
-                ltvMedianSqFt={ltvMedSqFts[0]}
-                ltvMeanSqFt={ltvMeanSqFts[0]}
-                ltvMedianLot={ltvMedLots[0]}
-                ltvMeanLot={ltvMeanLots[0]}
-                upb={deal.upb}
-              />
+              <>
+                <div className="prop-valuation-subtitle">
+                  Automated comparables &bull; vs. UPB of {formatCurrency(deal.upb)} &bull; * LTV calculated (UPB ÷ estimate)
+                </div>
+                <SingleValuation
+                  medianSqFt={medianSqFts[0]}
+                  meanSqFt={meanSqFts[0]}
+                  medianLot={medianLots[0]}
+                  meanLot={meanLots[0]}
+                  ltvMedianSqFt={ltvMedSqFts[0]}
+                  ltvMeanSqFt={ltvMeanSqFts[0]}
+                  ltvMedianLot={ltvMedLots[0]}
+                  ltvMeanLot={ltvMeanLots[0]}
+                  upb={deal.upb}
+                />
+              </>
             )}
           </div>
         )}
