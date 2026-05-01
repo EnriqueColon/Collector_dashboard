@@ -61,6 +61,21 @@ function splitCell(value: string | undefined): string[] {
   return value.split(';').map(s => s.replace(/\s+/g, ' ').trim()).filter(Boolean);
 }
 
+// "336/366 Main St, City" → ["336 Main St, City", "366 Main St, City"]
+function expandSlashAddresses(addrs: string[]): string[] {
+  const out: string[] = [];
+  for (const addr of addrs) {
+    const m = addr.match(/^(\d+)\/(\d+)(\s.+)/);
+    if (m) {
+      out.push(m[1] + m[3]);
+      out.push(m[2] + m[3]);
+    } else {
+      out.push(addr);
+    }
+  }
+  return out;
+}
+
 function parseVal(raw: string | undefined): number | null {
   if (!raw) return null;
   const n = parseFloat(raw.replace(/[$,]/g, '').trim());
@@ -165,7 +180,7 @@ export function PropertyDetailModal({ deal, onClose }: Props) {
   const [geoResults, setGeoResults] = useState<(GeoResult | null)[]>([]);
   const [selectedIdx, setSelectedIdx] = useState(0);
 
-  const addresses   = splitCell(deal.propertyAddress);
+  const addresses   = expandSlashAddresses(splitCell(deal.propertyAddress));
   const medianSqFts = splitCell(deal.valuationMedianSqFt);
   const meanSqFts   = splitCell(deal.valuationMeanSqFt);
   const medianLots  = splitCell(deal.valuationMedianLot);
