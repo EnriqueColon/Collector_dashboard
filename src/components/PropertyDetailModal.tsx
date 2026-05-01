@@ -225,11 +225,12 @@ export function PropertyDetailModal({ deal, onClose }: Props) {
           <div className="prop-valuation-section">
             <div className="prop-valuation-title">Property Valuation Estimates</div>
             <div className="prop-valuation-subtitle">
-              Automated comparables &bull; vs. UPB of {formatCurrency(deal.upb)} &bull; * LTV calculated (UPB ÷ estimate)
+              Automated comparables &bull; * LTV calculated (UPB ÷ estimate)
+              {isMulti && <> &bull; UPB split equally across {propertyCount} properties ({formatCurrency(deal.upb / propertyCount)} each)</>}
             </div>
 
             {isMulti ? (
-              // One block per property
+              // One block per property — UPB split equally across all properties
               Array.from({ length: propertyCount }).map((_, i) => (
                 <div key={i} className="prop-valuation-property-block">
                   <div className="prop-valuation-property-label">
@@ -245,7 +246,7 @@ export function PropertyDetailModal({ deal, onClose }: Props) {
                     ltvMeanSqFt={ltvMeanSqFts[i]}
                     ltvMedianLot={ltvMedLots[i]}
                     ltvMeanLot={ltvMeanLots[i]}
-                    upb={deal.upb}
+                    upb={deal.upb / propertyCount}
                   />
                 </div>
               ))
