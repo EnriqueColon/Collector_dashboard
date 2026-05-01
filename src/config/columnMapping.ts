@@ -13,6 +13,7 @@ export const COLUMN_MAPPING: Record<string, string> = {
   'Plaintiff Attorney Email': 'plaintiffAttorneyEmail',
   'Plaintiff Attoreny Email Sent?': 'emailSent',
   'Processing Log': 'complaintDate',
+  'Pages Processed': 'pageCount',
 
   // Valuation columns
   '[Automatic calculation] Subject address valuation based on median price per square foot': 'valuationMedianSqFt',

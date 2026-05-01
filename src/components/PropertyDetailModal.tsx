@@ -176,15 +176,16 @@ export function PropertyDetailModal({ deal, onClose }: Props) {
   const parsedMedianLots  = medianLots.map(parseVal);
   const parsedMeanLots    = meanLots.map(parseVal);
 
-  const sum = (arr: (number | null)[]) => {
-    const valid = arr.filter((v): v is number => v !== null);
-    return valid.length > 0 ? valid.reduce((a, b) => a + b, 0) : null;
+  // Only sum when every property has data — partial totals vs. full UPB are misleading
+  const sumIfComplete = (arr: (number | null)[]) => {
+    if (arr.length < propertyCount || arr.some(v => v === null)) return null;
+    return (arr as number[]).reduce((a, b) => a + b, 0);
   };
 
-  const totalMedianSqFt = sum(parsedMedianSqFts);
-  const totalMeanSqFt   = sum(parsedMeanSqFts);
-  const totalMedianLot  = sum(parsedMedianLots);
-  const totalMeanLot    = sum(parsedMeanLots);
+  const totalMedianSqFt = sumIfComplete(parsedMedianSqFts);
+  const totalMeanSqFt   = sumIfComplete(parsedMeanSqFts);
+  const totalMedianLot  = sumIfComplete(parsedMedianLots);
+  const totalMeanLot    = sumIfComplete(parsedMeanLots);
 
   const hasValuation = [...medianSqFts, ...meanSqFts].some(v => parseVal(v) !== null);
 
@@ -265,18 +266,24 @@ export function PropertyDetailModal({ deal, onClose }: Props) {
                   <MultiPropertyValuation label="Mean (lot size)"   values={parsedMeanLots}    />
                 </div>
 
-                {/* Aggregate summary */}
-                <div className="val-summary-block">
-                  <div className="val-summary-title">
-                    Combined Collateral vs. Total UPB ({formatCurrency(deal.upb)})
+                {/* Aggregate summary — only shown when all properties have data */}
+                {[totalMedianSqFt, totalMeanSqFt, totalMedianLot, totalMeanLot].some(v => v !== null) ? (
+                  <div className="val-summary-block">
+                    <div className="val-summary-title">
+                      Combined Collateral vs. Total UPB ({formatCurrency(deal.upb)})
+                    </div>
+                    <div className="prop-valuation-rows">
+                      <SummaryRow label="Total — Median ($/sq ft)"  totalValue={totalMedianSqFt} upb={deal.upb} />
+                      <SummaryRow label="Total — Mean ($/sq ft)"    totalValue={totalMeanSqFt}   upb={deal.upb} />
+                      <SummaryRow label="Total — Median (lot size)" totalValue={totalMedianLot}  upb={deal.upb} />
+                      <SummaryRow label="Total — Mean (lot size)"   totalValue={totalMeanLot}    upb={deal.upb} />
+                    </div>
                   </div>
-                  <div className="prop-valuation-rows">
-                    <SummaryRow label="Total — Median ($/sq ft)"  totalValue={totalMedianSqFt} upb={deal.upb} />
-                    <SummaryRow label="Total — Mean ($/sq ft)"    totalValue={totalMeanSqFt}   upb={deal.upb} />
-                    <SummaryRow label="Total — Median (lot size)" totalValue={totalMedianLot}  upb={deal.upb} />
-                    <SummaryRow label="Total — Mean (lot size)"   totalValue={totalMeanLot}    upb={deal.upb} />
+                ) : (
+                  <div className="val-incomplete-note">
+                    Combined collateral totals unavailable — valuation data is missing for one or more properties in this filing.
                   </div>
-                </div>
+                )}
               </>
             ) : (
               <>

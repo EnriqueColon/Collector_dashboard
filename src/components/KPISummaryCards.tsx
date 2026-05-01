@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ProcessedComplaint } from '../types';
 import { formatCurrency, formatDate, meetsCriteria } from '../utils/calculations';
-import { startOfMonth, startOfYear, subDays } from 'date-fns';
+import { startOfMonth, startOfYear, subDays, subMonths } from 'date-fns';
 
 interface KPISummaryCardsProps {
   complaints: ProcessedComplaint[];
@@ -50,6 +50,34 @@ function KPICard({ label, value, subLabel, trend, trendLabel, accent, selected, 
   );
 }
 
+function PageCountCard({ ytd, priorMonth, mtd, priorMonthName }: {
+  ytd: number; priorMonth: number; mtd: number; priorMonthName: string;
+}) {
+  return (
+    <div className="kpi-card kpi-page-count-card">
+      <div className="kpi-accent-bar" style={{ backgroundColor: 'var(--primary-color)' }} />
+      <div className="kpi-label">Pages Processed</div>
+      <div className="kpi-page-stats">
+        <div className="kpi-page-stat">
+          <div className="kpi-page-stat-value">{ytd.toLocaleString()}</div>
+          <div className="kpi-page-stat-label">YTD</div>
+        </div>
+        <div className="kpi-page-stat-divider" />
+        <div className="kpi-page-stat">
+          <div className="kpi-page-stat-value">{priorMonth.toLocaleString()}</div>
+          <div className="kpi-page-stat-label">{priorMonthName}</div>
+        </div>
+        <div className="kpi-page-stat-divider" />
+        <div className="kpi-page-stat">
+          <div className="kpi-page-stat-value">{mtd.toLocaleString()}</div>
+          <div className="kpi-page-stat-label">MTD</div>
+        </div>
+      </div>
+      <div className="kpi-sublabel">All filings regardless of criteria</div>
+    </div>
+  );
+}
+
 export function KPISummaryCards({ complaints }: KPISummaryCardsProps) {
   const [selectedCard, setSelectedCard] = useState<string | null>(null);
   const [dealSortField, setDealSortField] = useState<DealSortField>('upb');
@@ -61,6 +89,16 @@ export function KPISummaryCards({ complaints }: KPISummaryCardsProps) {
     const yearStart = startOfYear(now);
     const thisWeekStart = subDays(now, 7);
     const lastWeekStart = subDays(now, 14);
+    const priorMonthStart = startOfMonth(subMonths(now, 1));
+
+    // Page counts use ALL rows (billed per page regardless of validity)
+    const pages = (from: Date, to?: Date) =>
+      complaints.reduce((sum, c) => {
+        if (!c.complaintDate) return sum;
+        const d = c.complaintDate instanceof Date ? c.complaintDate : new Date(c.complaintDate);
+        if (d < from || (to && d >= to)) return sum;
+        return sum + (typeof c.pageCount === 'number' && !isNaN(c.pageCount) ? c.pageCount : 0);
+      }, 0);
 
     const valid = complaints.filter(c => c.isValid && !c.isDuplicate);
 
@@ -82,8 +120,14 @@ export function KPISummaryCards({ complaints }: KPISummaryCardsProps) {
       ? (thisWeekDeals.length > 0 ? 100 : 0)
       : Math.round(((thisWeekDeals.length - lastWeekDeals.length) / lastWeekDeals.length) * 100);
 
+    const pageMetrics = {
+      ytd:        pages(yearStart),
+      priorMonth: pages(priorMonthStart, monthStart),
+      mtd:        pages(monthStart),
+    };
+
     return {
-      metrics: { mtdAll: mtdAll.length, mtdCriteria: mtdCriteria.length, mtdUPB, ytdCriteria: ytdCriteria.length, thisWeek: thisWeekDeals.length, wow },
+      metrics: { mtdAll: mtdAll.length, mtdCriteria: mtdCriteria.length, mtdUPB, ytdCriteria: ytdCriteria.length, thisWeek: thisWeekDeals.length, wow, pageMetrics },
       cardDeals: { mtdAll, mtdCriteria, ytdCriteria, thisWeek: thisWeekDeals },
     };
   }, [complaints]);
@@ -131,6 +175,7 @@ export function KPISummaryCards({ complaints }: KPISummaryCardsProps) {
 
   const month = new Date().toLocaleString('en-US', { month: 'long' });
   const year = new Date().getFullYear();
+  const priorMonthName = subMonths(new Date(), 1).toLocaleString('en-US', { month: 'short' });
 
   const toggle = (key: string) => setSelectedCard(prev => prev === key ? null : key);
 
@@ -178,6 +223,12 @@ export function KPISummaryCards({ complaints }: KPISummaryCardsProps) {
           accent={metrics.wow >= 0 ? 'green' : 'amber'}
           selected={selectedCard === 'thisWeek'}
           onClick={() => toggle('thisWeek')}
+        />
+        <PageCountCard
+          ytd={metrics.pageMetrics.ytd}
+          priorMonth={metrics.pageMetrics.priorMonth}
+          mtd={metrics.pageMetrics.mtd}
+          priorMonthName={priorMonthName}
         />
       </div>
 

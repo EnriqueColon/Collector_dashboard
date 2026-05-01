@@ -10,6 +10,7 @@ export interface ComplaintRow {
   upb?: number; // Unpaid Principal Balance
   meetsCriteria?: string; // "Meets criteria" or "Does not meet criteria"
   complaintDate?: string | Date;
+  pageCount?: number;
   [key: string]: unknown; // Allow for additional fields
 }
 
