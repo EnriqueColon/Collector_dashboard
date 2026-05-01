@@ -23,17 +23,33 @@ function parseVal(raw: string | undefined): number | null {
   return isNaN(n) || n === 0 ? null : n;
 }
 
-// Format a decimal LTV ratio like 0.815 → "81.5%", or null if unavailable
-function formatLTV(raw: number | string | undefined): string | null {
-  if (raw === undefined || raw === null || raw === '-' || raw === '') return null;
-  const n = typeof raw === 'number' ? raw : parseFloat(raw as string);
-  return isNaN(n) ? null : `${(n * 100).toFixed(1)}%`;
+// Format a decimal LTV ratio like 0.815 → "81.5%", or calculate from UPB/value if missing
+function formatLTV(raw: number | string | undefined, upb?: number, valuationAmount?: number | null): string | null {
+  const hasRaw = raw !== undefined && raw !== null && raw !== '-' && raw !== '';
+  if (hasRaw) {
+    const n = typeof raw === 'number' ? raw : parseFloat(raw as string);
+    if (!isNaN(n)) return `${(n * 100).toFixed(1)}%`;
+  }
+  // Fall back to calculating from UPB ÷ valuation
+  if (upb && valuationAmount && valuationAmount > 0) {
+    return `${((upb / valuationAmount) * 100).toFixed(1)}% *`;
+  }
+  return null;
 }
 
-function ltvRiskClass(raw: number | string | undefined): string {
-  if (raw === undefined || raw === null || raw === '-' || raw === '') return '';
-  const n = typeof raw === 'number' ? raw : parseFloat(raw as string);
-  if (isNaN(n)) return '';
+function ltvRatio(raw: number | string | undefined, upb?: number, valuationAmount?: number | null): number | null {
+  const hasRaw = raw !== undefined && raw !== null && raw !== '-' && raw !== '';
+  if (hasRaw) {
+    const n = typeof raw === 'number' ? raw : parseFloat(raw as string);
+    if (!isNaN(n)) return n;
+  }
+  if (upb && valuationAmount && valuationAmount > 0) return upb / valuationAmount;
+  return null;
+}
+
+function ltvRiskClass(raw: number | string | undefined, upb?: number, valuationAmount?: number | null): string {
+  const n = ltvRatio(raw, upb, valuationAmount);
+  if (n === null) return '';
   if (n > 1)   return 'ltv-high';
   if (n > 0.8) return 'ltv-mid';
   return 'ltv-low';
@@ -80,8 +96,9 @@ function PropertyValuation({
       {rows.map(({ label, raw, ltv }) => {
         const amount = parseVal(raw);
         if (amount === null) return null;
-        const ltvStr = formatLTV(ltv);
-        const riskClass = ltvRiskClass(ltv);
+        const ltvStr = formatLTV(ltv, upb, amount);
+        const riskClass = ltvRiskClass(ltv, upb, amount);
+        const isCalculated = ltvStr?.endsWith('*');
         return (
           <div key={label} className="val-row">
             <div className="val-label">{label}</div>
@@ -92,7 +109,7 @@ function PropertyValuation({
                 : <span className="val-tag val-tag-red">▼ {formatCurrency(upb - amount)} below UPB</span>
               }
             </div>
-            <div className={`val-ltv ${riskClass}`}>
+            <div className={`val-ltv ${riskClass}`} title={isCalculated ? 'Calculated: UPB ÷ estimated value' : undefined}>
               {ltvStr ?? '—'}
             </div>
           </div>
@@ -208,7 +225,7 @@ export function PropertyDetailModal({ deal, onClose }: Props) {
           <div className="prop-valuation-section">
             <div className="prop-valuation-title">Property Valuation Estimates</div>
             <div className="prop-valuation-subtitle">
-              Automated comparables &bull; vs. UPB of {formatCurrency(deal.upb)}
+              Automated comparables &bull; vs. UPB of {formatCurrency(deal.upb)} &bull; * LTV calculated (UPB ÷ estimate)
             </div>
 
             {isMulti ? (
